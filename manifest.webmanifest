@@ -1,0 +1,16 @@
+{
+  "name": "Mister Vi · Ténis",
+  "short_name": "Mister Vi",
+  "description": "Análise de ténis (ATP/WTA): Elo por superfície, handicap e total de jogos, boletim e duelo de apostas.",
+  "lang": "pt-PT", "id": "./", "start_url": "./?source=app#inicio", "scope": "./", "display": "standalone", "orientation": "portrait",
+  "background_color": "#120804", "theme_color": "#140804", "categories": ["sports"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Jogos", "url": "./#jogos", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Analisar", "url": "./#analisar", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+  ]
+}
