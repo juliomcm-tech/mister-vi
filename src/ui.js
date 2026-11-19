@@ -576,5 +576,5 @@ $('#topFace').innerHTML = viFace('ok'); $('#btnRefresh').innerHTML = ic('refresh
 document.querySelectorAll('[data-ic]').forEach(el => { el.outerHTML = ic(el.dataset.ic); });
 window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEWS.includes(v) && v !== VIEW) { VIEW = v; render(); } });
 render();
-fetch('ratings.json').then(r => r.json()).then(j => { SEED = j; migrate(); settleAll(); render(); }).catch(() => { $('#view').innerHTML = '<div class="gl">Não consegui carregar os dados do Vi (ratings.json). Abre com internet uma vez.</div>'; });
+fetch('ratings.json').then(r => r.json()).then(j => { SEED = j; migrate(); settleAll(); render(); setTimeout(bossFeed, 50); }).catch(() => { $('#view').innerHTML = '<div class="gl">Não consegui carregar os dados do Vi (ratings.json). Abre com internet uma vez.</div>'; });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

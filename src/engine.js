@@ -11,7 +11,7 @@
      validado contra os resultados reais.
    Só vai à internet quando tocas em ↻. Tudo fica no telemóvel («vi_…»).
    ===================================================================== */
-const APP_VER = '1.2.0';
+const APP_VER = '1.2.1';
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -212,7 +212,7 @@ async function refresh() {
     saveDB();
     const nu = applyResults();
     snapshotPreds(); snapshotSlips();
-    const sett = settleAll(); const pil = pilotRun();
+    const sett = settleAll(); const pil = pilotRun(); bossFeed();
     LS.set('last', Date.now());
     toast(fails && !got ? 'Sem ligação à ESPN. Experimenta «Testar ligação» no Mais.' : `✓ ${got} jogos lidos${nu ? ` · ${nu} resultados no Elo` : ''}${sett ? ` · ${sett} apostas fechadas` : ''}${pil ? ` · o Vi sozinho apostou em ${pil}` : ''}`, 4200);
   } catch (e) { toast('Falhou: ' + esc(e.message || e)); }
@@ -433,6 +433,7 @@ function safeCands(day) {
     const dog = P.fav === 'a' ? 'b' : 'a';
     for (let H = 2.5; H <= 6.5; H += 1) { const q = probs(P, 'hg', dog, H).w; if (q >= SAFE_LEG) { opts.push({ mk: 'hg', sel: dog, line: H, p: q }); break; } }
     // a mais «barata» que ainda passa os 85% (evita seleções de 93% que pagam 1,01)
+    bossPool(m, opts);
     const best = opts.filter(x => x.p >= SAFE_LEG && x.p <= 0.95).sort((a, b) => a.p - b.p)[0];
     if (best) out.push(Object.assign(best, { m, odd: estOdd(best.p), est: true, lb: selLabel(m, best.mk, best.sel, best.line) }));
   });
@@ -547,4 +548,35 @@ function slipResult(S) {
   if (!S) return null; let pend = false, lost = false, w = 0;
   S.legs.forEach(l => { const r = outcome(l, mOf(l.g)); l.r = r; if (r === null) pend = true; else if (r === 'lost') lost = true; else if (r === 'won') w++; });
   return { st: lost ? 'lost' : pend ? 'open' : 'won', w, n: S.legs.length };
+}
+
+/* =====================================================================
+   📤 FICHA PARA O MISTER BOSS
+   Em cada atualização, o Vi deixa no telemóvel as seleções do dia que
+   passam dos 80% (e as apostas de valor), e confere as antigas com o seu
+   próprio código de liquidação. O Mister Boss só lê esta ficha.
+   ===================================================================== */
+let BPOOL = null;
+function bossPool(g, opts) {
+  if (!BPOOL) return;
+  opts.forEach(x => { const p = x.c != null ? x.c : x.p; if (p >= 0.80 && p <= 0.985) BPOOL.push({ g, mk: x.mk, sel: x.sel, line: x.line == null ? null : x.line, p, odd: x.odd || null, est: x.est !== false }); });
+}
+function bossFeed() {
+  try {
+    const F = LS.get('boss', null) || { v: 1, legs: {} }, now = Date.now();
+    const gameOf = id => mOf(id), segOf = g => ({ lg: String(g.t).toUpperCase(), cat: SURF_NAME[g.sf] || '', ev: g.ev || '' }), glOf = g => mLabel(g);
+    BPOOL = []; [today(), ymdAdd(today(), 1)].forEach(d => { try { safeCands(d); } catch (e) {} }); const pool = BPOOL; BPOOL = null;
+    Object.values(DB.m).filter(g => g && g.s === 'pre' && new Date(g.d).getTime() > now && new Date(g.d).getTime() < now + 36 * 3600e3).forEach(g => {
+      try { const v = predict(g).value; if (v) pool.push({ g, mk: v.mk, sel: v.sel, line: v.line == null ? null : v.line, p: v.p, odd: v.odd, est: false, val: r2(v.ev) }); } catch (e) {}
+    });
+    pool.forEach(x => {
+      const id = x.g.id + '|' + x.mk + '|' + x.sel + '|' + x.line + (x.val != null ? '|v' : ''), L = F.legs[id];
+      const rec = { id, g: x.g.id, gl: glOf(x.g), d: x.g.d, mk: x.mk, mkn: mkName(x.mk), sel: x.sel, line: x.line, lb: selLabel(x.g, x.mk, x.sel, x.line), p: Math.round(x.p * 1000) / 1000, odd: x.odd ? r2(x.odd) : null, est: !!x.est, val: x.val != null ? x.val : null, seg: segOf(x.g), st: 'open', t: now };
+      if (!L) F.legs[id] = rec; else if (L.st === 'open' && new Date(L.d).getTime() > now) Object.assign(L, { p: rec.p, odd: rec.odd, est: rec.est, val: rec.val, t: now });
+    });
+    Object.values(F.legs).forEach(l => { if (l.st !== 'open') return; const g = gameOf(l.g); if (!g) return; let r = null; try { r = outcome(l, g); } catch (e) {} if (r) { l.st = r; l.tset = now; } });
+    const ks = Object.keys(F.legs); if (ks.length > 900) ks.sort((a, b) => F.legs[a].t - F.legs[b].t).slice(0, ks.length - 900).forEach(k => delete F.legs[k]);
+    Object.assign(F, { app: 'vi', name: 'Mister Vi', sport: 'Ténis · ATP/WTA', ver: APP_VER, t: now });
+    LS.set('boss', F);
+  } catch (e) { console.warn('bossFeed', e); }
 }
