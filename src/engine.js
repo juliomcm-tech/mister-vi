@@ -11,10 +11,11 @@
      validado contra os resultados reais.
    Só vai à internet quando tocas em ↻. Tudo fica no telemóvel («vi_…»).
    ===================================================================== */
-const APP_VER = '1.1.0';
+const APP_VER = '1.2.0';
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const r3 = x => Math.round(x * 1000) / 1000;
 const r2 = x => Math.round(x * 100) / 100;
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('vi_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -56,7 +57,8 @@ let DONE = LS.get('done', {}) || {};                        // jogos já contado
 const arrOr = v => Array.isArray(v) ? v : [], objOr = v => v && typeof v === 'object' && !Array.isArray(v) ? v : {};
 let BETS = arrOr(LS.get('bets', [])), PREDS = objOr(LS.get('preds', {})), DEPOS = arrOr(LS.get('depos', [])), SLIPS = objOr(LS.get('slips', {})), MAN = objOr(LS.get('man', {}));
 const CFG_DEF = { bank: { tu: 100, to: 100, pi: 250 }, min: 0.25, piOn: true, piStake: 2.5, evMin: 0.05, mktW: 0.6, oddMin: 1.25, oddMax: 5 };
-let CFG = Object.assign({}, CFG_DEF, LS.get('cfg', {})); CFG.bank = Object.assign({}, CFG_DEF.bank, CFG.bank || {});
+let CFG = Object.assign({}, CFG_DEF, LS.get('cfg', {}));
+if (CFG.botV !== 1) { CFG.piOn = true; CFG.botV = 1; } CFG.bank = Object.assign({}, CFG_DEF.bank, CFG.bank || {});
 const saveDB = () => { if (!LS.set('db', DB)) { const cut = ymdAdd(today(), -45); Object.keys(DB.m).forEach(id => { if (DB.m[id].ed < cut) delete DB.m[id]; }); LS.set('db', DB); } };
 const saveBets = () => LS.set('bets', BETS);
 
@@ -161,7 +163,7 @@ function ingestEvent(ev, tour) {
     if (/double|mixed|pares/i.test(gn)) return;
     (G.competitions || []).forEach(c => {
       const C = c.competitors || []; if (C.length !== 2) return;
-      const who = x => { const a = x.athlete || (x.roster && x.roster.athletes && x.roster.athletes.length === 1 ? x.roster.athletes[0] : null) || {}; return { n: a.displayName || a.fullName || a.shortName || '', ioc: (a.flag && (a.flag.alt || a.flag.abbreviation)) || (a.country && a.country.abbreviation) || '', rk: Number((x.curatedRank && x.curatedRank.current) || x.rank || 0) || 0 }; };
+      const who = x => { const a = x.athlete || (x.roster && x.roster.athletes && x.roster.athletes.length === 1 ? x.roster.athletes[0] : null) || {}; return { n: a.displayName || a.fullName || a.shortName || '', ioc: (a.flag && (a.flag.alt || a.flag.abbreviation)) || (a.country && a.country.abbreviation) || '', rk: Number((x.curatedRank && x.curatedRank.current) || x.rank || 0) || 0, hs: (a.headshot && a.headshot.href) || '', fl: (a.flag && a.flag.href) || '' }; };
       const A = who(C[0]), B = who(C[1]); if (!A.n || !B.n || /\//.test(A.n + B.n)) return;
       const st = (c.status && c.status.type) || {}, desc = String(st.description || '') + ' ' + String(st.name || '') + ' ' + String(st.detail || '');
       const off = /walkover|w\/o|cancel|postpon/i.test(desc), ret = /retire|ret\.|abandon|default/i.test(desc);
@@ -212,7 +214,7 @@ async function refresh() {
     snapshotPreds(); snapshotSlips();
     const sett = settleAll(); const pil = pilotRun();
     LS.set('last', Date.now());
-    toast(fails && !got ? 'Sem ligação à ESPN. Experimenta «Testar ligação» no Mais.' : `✓ ${got} jogos lidos${nu ? ` · ${nu} resultados no Elo` : ''}${sett ? ` · ${sett} apostas fechadas` : ''}${pil ? ` · piloto fez ${pil}` : ''}`, 4200);
+    toast(fails && !got ? 'Sem ligação à ESPN. Experimenta «Testar ligação» no Mais.' : `✓ ${got} jogos lidos${nu ? ` · ${nu} resultados no Elo` : ''}${sett ? ` · ${sett} apostas fechadas` : ''}${pil ? ` · o Vi sozinho apostou em ${pil}` : ''}`, 4200);
   } catch (e) { toast('Falhou: ' + esc(e.message || e)); }
   finally { BUSY = false; btn.classList.remove('spin'); render(); }
 }
@@ -327,9 +329,19 @@ function factorsOf(T, A, B, m) {
   return { k: c.elo, sum: list.reduce((s, x) => s + x.v, 0), list };
 }
 const PC = new Map();                                // memória de previsões (a ficha, o cartão e o boletim pedem a mesma várias vezes)
+let CALW = null;
+function calibW() {   // escolhe o peso das odds que menos erra nas previsões guardadas antes de cada jogo (com «inércia» de 300 jogos)
+  const k = Object.keys(PREDS).length + '|' + LS.get('last', 0) + '|' + CFG.mktW; if (CALW && CALW.k === k) return CALW;
+  const rows = [];
+  Object.entries(PREDS).forEach(([id, p]) => { const m = mOf(id); if (!m || m.s !== 'post' || !m.w || p.nv == null || p.pE == null) return; rows.push([p.nv, p.pE, m.w === 'a']); });
+  let best = CFG.mktW, bl = Infinity;
+  if (rows.length >= 30) for (let w = 0.3; w <= 1.0001; w += 0.02) { let s = 0; rows.forEach(([q, pe, y]) => { const p = clamp(w * q + (1 - w) * pe, 1e-4, 1 - 1e-4); s -= Math.log(y ? p : 1 - p); }); if (s < bl) { bl = s; best = w; } }
+  CALW = { k, n: rows.length, raw: best, w: clamp((rows.length * best + 300 * CFG.mktW) / (rows.length + 300), 0.3, 1) };
+  return CALW;
+}
 function predict(m) {
   const A = getP(m.t, m.a.n, m.a.rk, m.a.ioc), B = getP(m.t, m.b.n, m.b.rk, m.b.ioc), sf = m.sf || 'h', o = m.o || (MAN[m.id] && MAN[m.id].o) || {};
-  const key = [m.id, sf, m.bo, m.d, o.a, o.b, A.e, B.e, A.es[sf], B.es[sf], A.last, B.last, CFG.mktW, CFG.evMin, CFG.oddMin, CFG.oddMax].join('|');
+  const key = [m.id, sf, m.bo, m.d, o.a, o.b, A.e, B.e, A.es[sf], B.es[sf], A.last, B.last, calibW().w, CFG.evMin, CFG.oddMin, CFG.oddMax].join('|');
   const hit = PC.get(m.id); if (hit && hit.k === key) return hit.P;
   const P = predict0(m); PC.set(m.id, { k: key, P }); return P;
 }
@@ -344,7 +356,7 @@ function predict0(m) {
   const pElo = p;
   const odds = m.o || (MAN[m.id] && MAN[m.id].o) || null;
   let pNV = null, W = 0;
-  if (odds && odds.a > 1 && odds.b > 1) { pNV = (1 / odds.a) / (1 / odds.a + 1 / odds.b); W = CFG.mktW; p = W * pNV + (1 - W) * pElo; }
+  if (odds && odds.a > 1 && odds.b > 1) { pNV = (1 / odds.a) / (1 / odds.a + 1 / odds.b); W = calibW().w; p = W * pNV + (1 - W) * pElo; }
   const D = gamesDist(tour, sf, A.sv, A.rv, B.sv, B.rv, p, m.bo);
   const P = { m, A, B, ra, rb, pElo, pNV, W, pA: p, D, sf, fx, conf: Math.max(p, 1 - p), fav: p >= 0.5 ? 'a' : 'b' };
   P.eg = D.reduce((s, x) => s + x.g * x.p, 0); P.ed = D.reduce((s, x) => s + x.d * x.p, 0);
@@ -397,7 +409,7 @@ function snapshotPreds() {
   Object.values(DB.m).forEach(m => {
     if (m.s !== 'pre' || new Date(m.d).getTime() < now - 6e5 || m.ed > ymdAdd(today(), 2)) return;
     const P = predict(m);
-    PREDS[m.id] = { pA: r2(P.pA), pE: r2(P.pElo), eg: r2(P.eg), ed: m.ed, t: m.t, sf: m.sf, pk: P.value ? { mk: P.value.mk, sel: P.value.sel, line: P.value.line, odd: P.value.odd, ev: r2(P.value.ev), p: r2(P.value.p), lb: selLabel(m, P.value.mk, P.value.sel, P.value.line) } : null, ts: now };
+    PREDS[m.id] = { pA: r3(P.pA), pE: r3(P.pElo), nv: P.pNV != null ? r3(P.pNV) : null, oa: (m.o && m.o.a) || null, ob: (m.o && m.o.b) || null, eg: r2(P.eg), ed: m.ed, t: m.t, sf: m.sf, ev: m.ev, bo: m.bo, rk: [m.a.rk || 0, m.b.rk || 0], pk: P.value ? { mk: P.value.mk, sel: P.value.sel, line: P.value.line, odd: P.value.odd, ev: r2(P.value.ev), p: r2(P.value.p), lb: selLabel(m, P.value.mk, P.value.sel, P.value.line) } : null, ts: now };
   });
   const ks = Object.keys(PREDS); if (ks.length > 1500) ks.sort((a, b) => PREDS[a].ts - PREDS[b].ts).slice(0, ks.length - 1500).forEach(k => delete PREDS[k]);
   LS.set('preds', PREDS);
@@ -442,9 +454,9 @@ function snapshotSlips() {
 }
 
 /* =====================================================================
-   5) CONTAS: Tu · Mister Vi · Piloto
+   5) CONTAS: Tu · Mister Vi · Vi sozinho (bot)
    ===================================================================== */
-const ACC = { tu: { n: 'Tu', ic: 'star', c: '#60a5fa' }, to: { n: 'Mister Vi', ic: 'racket', c: '#ff8a2a' }, pi: { n: 'Piloto', ic: 'robot', c: '#c084fc' } };
+const ACC = { tu: { n: 'Tu', ic: 'star', c: '#60a5fa' }, to: { n: 'Mister Vi', ic: 'racket', c: '#ff8a2a' }, pi: { n: 'Vi sozinho', ic: 'robot', c: '#c084fc' } };
 function accStats(acc) {
   const B = BETS.filter(b => b.acc === acc), dep = DEPOS.filter(d => d.acc === acc).reduce((s, d) => s + d.v, 0);
   let staked = 0, ret = 0, open = 0, setSt = 0, setRet = 0, w = 0, l = 0;
@@ -493,19 +505,44 @@ function settleAll() {
   });
   if (n) saveBets(); return n;
 }
+const m0 = g => !!g;
+/* =====================================================================
+   🤖 Vi SOZINHO: um bot que aposta sozinho, sem ninguém lhe mexer.
+   Regra fixa: em cada jogo das próximas 36 horas, aposta no vencedor que a
+   cabeça dele (o modelo puro, sem copiar as odds) prefere, à odd da ESPN do
+   momento. Valor fixo. Serve para ver como ele se porta de verdade.
+   Teste às cegas jun 2025 → jun 2026 (jogos de tour): o Elo acerta ~66% dos vencedores (não há odds históricas grátis de ténis para medir o lucro).
+   ===================================================================== */
+const BOT_TEST = { acerto: 0.66, roi: null, n: null, txt: '66% de acerto (jun 2025 → jun 2026) · lucro por medir' };
 function pilotRun() {
   if (!CFG.piOn) return 0;
   const now = Date.now(); let n = 0;
   const done = new Set(BETS.filter(b => b.acc === 'pi' && b.mk !== 'multi').map(b => b.g));
-  Object.values(DB.m).filter(m => m.s === 'pre' && !done.has(m.id) && m.o).forEach(m => {
-    const t0 = new Date(m.d).getTime(); if (t0 < now + 5 * 60e3 || t0 > now + 36 * 3600e3) return;
-    const P = predict(m), v = P.value; if (!v) return;
+  Object.values(DB.m).filter(g => m0(g) && g.s === 'pre' && !done.has(g.id) && g.o && g.o.a > 1 && g.o.b > 1).sort((x, y) => x.d < y.d ? -1 : 1).forEach(g => {
+    const t0 = new Date(g.d).getTime(); if (t0 < now + 5 * 60e3 || t0 > now + 36 * 3600e3) return;
+    const P = predict(g), ph = P.pElo, sel = ph >= 0.5 ? 'a' : 'b', odd = sel === 'a' ? g.o.a : g.o.b;
+    const nva = (1 / g.o.a) / (1 / g.o.a + 1 / g.o.b);
     const stake = Math.max(CFG.min, r2(CFG.piStake)); if (accStats('pi').bal < stake) return;
-    newBet('pi', m, v, stake, { p: r2(v.p), ev: r2(v.ev) }); n++;
+    newBet('pi', g, { mk: 'ml', sel, line: null, odd }, stake, { auto: 1, pk: r2(sel === 'a' ? ph : 1 - ph), nv: r2(sel === 'a' ? nva : 1 - nva), src: g.o.p || 'ESPN' });
+    n++;
   });
-  // o boletim seguro NÃO é apostado pelo piloto: as odds seriam inventadas. O registo dele está em «Estatísticas» (acertou/falhou).
-  if (n) saveBets(); return n;
+  if (n) saveBets();
+  return n;
 }
+function botStats() {
+  const B = BETS.filter(b => b.acc === 'pi' && b.auto), S = B.filter(b => b.st === 'won' || b.st === 'lost' || b.st === 'push');
+  const w = S.filter(b => b.st === 'won').length, l = S.filter(b => b.st === 'lost').length;
+  const plOf = L => r2(L.reduce((s, b) => s + (b.ret || 0) - b.stake, 0));
+  const dog = S.filter(b => b.nv != null && b.nv < 0.5), fav = S.filter(b => b.nv != null && b.nv >= 0.5), conf = S.filter(b => b.pk >= 0.7);
+  const st = S.reduce((s, b) => s + b.stake, 0), ret = S.reduce((s, b) => s + (b.ret || 0), 0);
+  const byD = {}; S.forEach(b => { const k = String(b.gd).slice(0, 10); (byD[k] = byD[k] || []).push(b); });
+  const days = Object.entries(byD).map(([k, L]) => ({ k, w: L.filter(b => b.st === 'won').length, l: L.filter(b => b.st === 'lost').length, pl: plOf(L) })).sort((a, b) => a.k < b.k ? 1 : -1);
+  const byG = {}; S.forEach(b => { const k = (() => { const m = mOf(b.g); return m ? m.t.toUpperCase() + ' · ' + (SURF_NAME[m.sf] || '') : ''; })(); if (!k) return; const o = byG[k] = byG[k] || { n: 0, w: 0, pl: 0 }; o.n++; if (b.st === 'won') o.w++; o.pl += (b.ret || 0) - b.stake; });
+  let run = 0; const curve = S.slice().sort((a, b) => (a.tset || a.t) - (b.tset || b.t)).map(b => (run += (b.ret || 0) - b.stake));
+  return { n: B.length, open: B.filter(b => b.st === 'open').length, openL: B.filter(b => b.st === 'open'), w, l, p: S.length - w - l, hit: w + l ? w / (w + l) : null, roi: st ? (ret - st) / st : null, pl: r2(ret - st),
+    dogN: dog.length, dogW: dog.filter(b => b.st === 'won').length, dogPl: plOf(dog), favN: fav.length, favW: fav.filter(b => b.st === 'won').length, favPl: plOf(fav), confN: conf.length, confW: conf.filter(b => b.st === 'won').length, days, byG, curve };
+}
+
 function slipResult(S) {
   if (!S) return null; let pend = false, lost = false, w = 0;
   S.legs.forEach(l => { const r = outcome(l, mOf(l.g)); l.r = r; if (r === null) pend = true; else if (r === 'lost') lost = true; else if (r === 'won') w++; });

@@ -35,6 +35,14 @@ const okIc = ok => ok == null ? '<span class="muted">—</span>' : ok ? `<span c
 const SFC = { h: 'var(--h)', c: 'var(--c)', g: 'var(--g)' };
 const sfTag = sf => `<span class="sf" style="--k:${SFC[sf] || 'var(--h)'}">${SURF_NAME[sf] || 'Piso duro'}</span>`;
 const ini = n => String(n || '?').split(' ').filter(Boolean).map(x => x[0]).slice(0, 2).join('').toUpperCase();
+/* cara do jogador: foto da ESPN (se houver) sobre a bandeira do país, num anel da cor da superfície */
+function pav(m, s, sz) {
+  const X = s === 'a' ? m.a : m.b, P = (PC.get(m.id) || {}).P, Pp = P ? (s === 'a' ? P.A : P.B) : null;
+  const c2 = IOC2[String(X.ioc || '').toUpperCase()] || (String(X.ioc || '').length === 2 ? String(X.ioc).toUpperCase() : null);
+  const fl = c2 ? `https://flagcdn.com/w160/${c2.toLowerCase()}.png` : (X.fl || '');
+  const rk = X.rk || (Pp && Pp.rank) || 0, z = sz || 54;
+  return `<span class="pav" style="--z:${z}px;--k:${SFC[m.sf] || 'var(--h)'}"><span class="in">${fl ? `<img class="fl" src="${esc(fl)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<b>${esc(ini(X.n))}</b>${X.hs ? `<img class="hs" src="${esc(X.hs)}" alt="" loading="lazy" onerror="this.remove()">` : ''}</span>${rk ? `<i>#${rk}</i>` : ''}</span>`;
+}
 const unitsTxt = u => (u > 0 ? '+' : u < 0 ? '−' : '') + Math.abs(u).toFixed(2).replace('.', ',') + ' u';
 
 %%FACE%%
@@ -103,6 +111,7 @@ function viewInicio() {
     h += `<div class="h3" style="font-size:.9rem;margin-top:10px">${ic('star')} Favoritos mais claros</div>` + top.map(({ m, P }) => `<div class="why" onclick="GT='ana';openMatch('${m.id}')"><span>${esc(pName(m, P.fav))} <span class="muted small">vs ${esc(shortName(pName(m, P.fav === 'a' ? 'b' : 'a')))} · ${hhmm(m.d)}</span></span><b>${pct(P.conf)} · justa ${odd2(1 / P.conf)}</b></div>`).join('');
     h += `<button class="btn or full" style="margin-top:12px" onclick="DAY=0;go('jogos')">${ic('ball')} Abrir os jogos de hoje</button></div>`;
   }
+  h += botHome();
   const ST = statsAll();
   h += `<div class="gl"><div class="h3">${ic('chart')} Como vai o Vi<span class="r">${ST.n} jogos</span></div>` + (ST.n ? attr('Vencedor certo', ST.win / ST.n * 100, pct(ST.win / ST.n)) + attr('Previsto vs real (jogos)', 50, ST.gn ? `${(ST.gp / ST.gn).toFixed(1).replace('.', ',')} vs ${(ST.ga / ST.gn).toFixed(1).replace('.', ',')}` : '—') : '<div class="small muted">Enche-se sozinho: toca em ↻ todos os dias antes dos jogos.</div>') + `<button class="btn full" style="margin-top:6px" onclick="openStats()">${ic('chart')} Estatísticas completas</button></div>`;
   return h;
@@ -132,7 +141,7 @@ function matchCard(m) {
   else if (m.s === 'in') mid = `<div class="capw"><div class="cap">${setsW} : ${setsL}<small class="live">ao vivo</small></div></div>`;
   else if (m.s === 'off') mid = `<div class="capw"><div class="cap">—<small>adiado</small></div></div>`;
   else mid = `<div class="capw"><div class="cap">${setsW} : ${setsL}<small>${m.ret ? 'desistência' : 'final'}</small></div></div>`;
-  const pl = (s, Pp) => `<div class="pl"><div class="av">${esc(ini(pName(m, s)))}</div><div class="nm">${esc(pName(m, s))}</div><div class="rk">${(s === 'a' ? m.a : m.b).ioc ? flag((s === 'a' ? m.a : m.b).ioc) + esc((s === 'a' ? m.a : m.b).ioc) + ' · ' : ''}${Pp.rank ? '#' + Pp.rank : 'Elo ' + Math.round(Pp.e)}</div></div>`;
+  const pl = (s, Pp) => `<div class="pl">${pav(m, s, 52)}<div class="nm">${esc(pName(m, s))}</div><div class="rk">${(s === 'a' ? m.a : m.b).ioc ? flag((s === 'a' ? m.a : m.b).ioc) + esc((s === 'a' ? m.a : m.b).ioc) + ' · ' : ''}${Pp.rank ? '#' + Pp.rank : 'Elo ' + Math.round(Pp.e)}</div></div>`;
   let body = '';
   if (m.sets.length) {
     const n = Math.max(m.sets.length, m.bo === 5 ? 3 : 2);
@@ -226,9 +235,9 @@ function openMatch(id) {
   const P = predict(m);
   const setsW = m.sets.filter(x => x[0] > x[1]).length, setsL = m.sets.filter(x => x[1] > x[0]).length;
   let h = `<div class="gl" style="margin-top:8px"><div class="hd small muted" style="display:flex;gap:6px;align-items:center">${esc(m.ev)}${m.rd ? ' · ' + esc(m.rd) : ''}<span style="margin-left:auto">${sfTag(m.sf)}</span></div>
-   <div class="vsr" style="margin-top:10px"><div class="pl"><div class="av">${esc(ini(m.a.n))}</div><div class="nm">${esc(m.a.n)}</div></div>
+   <div class="vsr" style="margin-top:10px"><div class="pl">${pav(m, 'a', 66)}<div class="nm">${esc(m.a.n)}</div></div>
    <div class="capw"><div class="cap">${m.s === 'pre' ? pct(P.pA) + ' · ' + pct(1 - P.pA) : setsW + ' : ' + setsL}<small>${m.s === 'pre' ? 'Vi · ' + dayLbl(m.d) + ' ' + hhmm(m.d) : m.s === 'in' ? 'ao vivo' : 'final'}</small></div></div>
-   <div class="pl"><div class="av">${esc(ini(m.b.n))}</div><div class="nm">${esc(m.b.n)}</div></div></div>
+   <div class="pl">${pav(m, 'b', 66)}<div class="nm">${esc(m.b.n)}</div></div></div>
    ${m.sets.length ? `<div class="small" style="text-align:center;margin-top:8px">${m.sets.map(x => x[0] + '-' + x[1]).join(' · ')}</div>` : ''}</div>
    <div class="pills">${[['ana', 'Análise'], ['jog', 'Jogos e sets'], ['pl', 'Jogadores'], ['odd', 'Odds da Betano']].map(([k, t]) => `<button class="pill ${GT === k ? 'on' : ''}" onclick="GT='${k}';openMatch('${id}')">${t}</button>`).join('')}</div>`;
   if (GT === 'ana') h += tabAna(m, P); else if (GT === 'jog') h += tabJog(m, P); else if (GT === 'pl') h += tabPl(m, P); else h += tabOdd(m, P);
@@ -275,7 +284,7 @@ function tabJog(m, P) {
   return h;
 }
 function tabPl(m, P) {
-  const card = (s, X) => `<div class="gl"><div class="row"><div class="av">${esc(ini(pName(m, s)))}</div><div style="flex:1"><b>${esc(pName(m, s))}</b><div class="small muted">${flag((s === 'a' ? m.a : m.b).ioc || X.ioc)}${esc((s === 'a' ? m.a : m.b).ioc || X.ioc || '')}${X.rank ? ' · ranking #' + X.rank : ''}</div></div></div>
+  const card = (s, X) => `<div class="gl"><div class="row">${pav(m, s, 50)}<div style="flex:1"><b>${esc(pName(m, s))}</b><div class="small muted">${flag((s === 'a' ? m.a : m.b).ioc || X.ioc)}${esc((s === 'a' ? m.a : m.b).ioc || X.ioc || '')}${X.rank ? ' · ranking #' + X.rank : ''}</div></div></div>
     <div style="margin-top:12px">${attr('Elo geral', clamp((X.e - 1300) / 12, 0, 100), Math.round(X.e))}${['h', 'c', 'g'].map(k => attr('Elo ' + SURF_NAME[k].toLowerCase() + ` <span class="muted small">(${X.ns[k]} j)</span>`, clamp((X.es[k] - 1300) / 12, 0, 100), Math.round(X.es[k]))).join('')}
     ${attr('Serviço (pontos ganhos vs média)', 50 + (X.sv || 0) * 500, ((X.sv || 0) >= 0 ? '+' : '−') + Math.abs((X.sv || 0) * 100).toFixed(1).replace('.', ',') + ' pts %')}${attr('Resposta (pontos ganhos vs média)', 50 + (X.rv || 0) * 500, ((X.rv || 0) >= 0 ? '+' : '−') + Math.abs((X.rv || 0) * 100).toFixed(1).replace('.', ',') + ' pts %')}</div>
     <div class="small muted">${X.n} jogos estudados${X.last ? ' · último ' + X.last.slice(6) + '/' + X.last.slice(4, 6) + '/' + X.last.slice(0, 4) : ''}</div></div>`;
@@ -407,13 +416,14 @@ function viewContas() {
   }
   h += `<div class="accs" style="margin-top:12px">${['tu', 'to', 'pi'].map(k => { const s = accStats(k); return `<div class="acct ${ACCF === k ? 'on' : ''}" style="--k:${ACC[k].c}" onclick="ACCF=ACCF==='${k}'?'all':'${k}';render()">${ic(ACC[k].ic)}<div class="n">${ACC[k].n}</div><div class="v">${eur(s.bal)}</div><div class="small ${s.profit >= 0 ? 'pos' : 'neg'}">${sEur(s.profit)}</div></div>`; }).join('')}</div>`;
   if (ACCF !== 'all') { const s = accStats(ACCF), n = s.w + s.l; h += `<div class="gl">${attr('Taxa de acerto', n ? s.w / n * 100 : 0, n ? `${pct(s.w / n)} (${s.w}/${n})` : '—')}${attr('ROI', clamp(50 + s.roi * 100, 0, 100), sPct(s.roi))}${attr('Em jogo', s.start ? s.open / s.start * 100 : 0, eur(s.open))}</div>`; }
+  if (ACCF === 'pi') h += botPanel(); else if (ACCF === 'all') h += botMini();
   h += `<div class="row w" style="margin-top:10px"><button class="btn sm" onclick="exportCSV()">${ic('download')} Exportar</button><button class="btn sm" onclick="printBets()">${ic('print')} Imprimir</button><button class="btn sm" onclick="openDeposit()">${ic('coins')} Recarregar</button></div>`;
   const L = BETS.filter(b => b.st !== 'pass' && (ACCF === 'all' || b.acc === ACCF)).sort((a, b) => b.t - a.t), open = L.filter(b => b.st === 'open'), done = L.filter(b => b.st !== 'open');
   h += `<div class="h2">${ic('clock')} Em jogo<span class="r">${open.length} · ${eur(open.reduce((s, b) => s + b.stake, 0))}</span></div>` + (open.length ? `<div class="gl hot">${open.map(betRow).join('')}</div>` : '<div class="gl small muted">Nada em jogo.</div>');
   h += `<div class="h2">${ic('list')} Histórico</div>` + (done.length ? `<div class="gl">${done.slice(0, 150).map(betRow).join('')}</div>` : '<div class="gl small muted">Ainda sem apostas fechadas.</div>');
   return h;
 }
-function openDeposit() { openSheet('Recarregar banca', `<label class="f">Conta</label><select class="in" id="dAcc"><option value="tu">Tu</option><option value="to">Mister Vi</option><option value="pi">Piloto</option></select><label class="f">Valor (€)</label><input class="in" id="dVal" inputmode="decimal" value="50"><button class="btn or full" style="margin-top:12px" onclick="doDeposit()">Juntar</button>`, true); }
+function openDeposit() { openSheet('Recarregar banca', `<label class="f">Conta</label><select class="in" id="dAcc"><option value="tu">Tu</option><option value="to">Mister Vi</option><option value="pi">Vi sozinho</option></select><label class="f">Valor (€)</label><input class="in" id="dVal" inputmode="decimal" value="50"><button class="btn or full" style="margin-top:12px" onclick="doDeposit()">Juntar</button>`, true); }
 function doDeposit() { const v = num($('#dVal').value); if (!(v > 0)) return toast('Valor inválido'); DEPOS.push({ acc: $('#dAcc').value, v: r2(v), t: Date.now() }); LS.set('depos', DEPOS); closeSheet(); render(); }
 const ST_TXT = { open: 'em jogo', won: 'ganhou', lost: 'perdeu', push: 'devolvida', void: 'anulada' };
 function exportCSV() {
@@ -441,13 +451,17 @@ function statsAll() {
 function wilson(k, n) { if (!n) return [0, 1]; const z = 1.96, p = k / n, d = 1 + z * z / n, c = (p + z * z / (2 * n)) / d, mm = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d; return [c - mm, c + mm]; }
 function openStats() {
   const R = statsAll(); const sl = Object.values(SLIPS).map(slipResult).filter(x => x && x.st !== 'open'), slW = sl.filter(x => x.st === 'won').length;
-  if (!R.n && !sl.length) return openSheet('Estatísticas', `<div class="gl empty"><div class="face">${viFace('ok')}</div>Enche-se sozinho: o Vi guarda a previsão de cada jogo antes de começar e compara com o resultado.</div>`);
+  if (!R.n && !sl.length && !botStats().n) return openSheet('Estatísticas', `<div class="gl empty"><div class="face">${viFace('ok')}</div>Enche-se sozinho: o Vi guarda a previsão de cada jogo antes de começar e compara com o resultado.</div>`);
   const pm = (k, n) => { const [a, b] = wilson(k, n); return `${pct(k / n)} <span class="muted small">(${Math.round(a * 100)}–${Math.round(b * 100)}%)</span>`; };
   let h = `<div class="gl">${attr('Vencedor certo', R.win / R.n * 100, pm(R.win, R.n) + ` · ${R.n} jogos`)}${Object.entries(R.tour).map(([k, T]) => attr(k.toUpperCase(), T.w / T.n * 100, `${T.w}/${T.n}`)).join('')}${Object.entries(R.sf).map(([k, S]) => attr(SURF_NAME[k], S.w / S.n * 100, `${S.w}/${S.n}`)).join('')}
     <div class="why"><span>Jogos por encontro: previsto vs real</span><b>${R.gn ? (R.gp / R.gn).toFixed(1).replace('.', ',') + ' vs ' + (R.ga / R.gn).toFixed(1).replace('.', ',') : '—'}</b></div>
     ${sl.length ? `<div class="why"><span>Boletins seguros inteiros</span><b>${slW}/${sl.length}</b></div>` : ''}
+    ${(() => { const L = safeLegStats(); return L ? `<div class="why"><span>Seleções seguras</span><b>${L.w}/${L.n} (${pct(L.w / L.n)}) · prometia ${pct(L.p)}</b></div>` : ''; })()}
+    <div class="why"><span>Peso que o Vi dá às odds (aprendido)</span><b>${pct(calibW().w)} · ${calibW().n} jogos</b></div>
     ${R.bn ? `<div class="why"><span>Apostas do Vi</span><b class="${R.bu >= 0 ? 'pos' : 'neg'}">${R.bw}/${R.bn} · ${unitsTxt(R.bu)}</b></div>` : ''}</div>
     <div class="h2">${ic('chip')} Quando o Vi diz X%, acontece…</div><div class="gl"><table class="tbl"><tr><th>Confiança</th><th>Jogos</th><th>Dizia</th><th>Aconteceu</th></tr>${['50-60', '60-70', '70-80', '80+'].filter(b => R.conf[b]).map(b => { const C = R.conf[b]; return `<tr><td>${b}%</td><td>${C.n}</td><td>${pct(C.p / C.n)}</td><td class="${Math.abs(C.w / C.n - C.p / C.n) < 0.08 ? 'pos' : 'neg'}">${pct(C.w / C.n)}</td></tr>`; }).join('')}</table></div>
+    <div class="h2">${ic('robot')} Vi sozinho (bot)<span class="r">${botStats().n} apostas</span></div><div class="gl">${(() => { const B = botStats(); return B.w + B.l ? botStatsBlock(B) : '<div class="small muted">O bot aposta sozinho quando atualizas antes dos jogos. As estatísticas aparecem depois dos primeiros resultados.</div>'; })()}</div>
+    <button class="btn full" style="margin-top:10px" onclick="exportPreds()">${ic('download')} Exportar previsões (Excel)</button>
     <div class="h2">${ic('wallet')} Contas</div><div class="gl">${['tu', 'to', 'pi'].map(k => { const s = accStats(k); return `<div class="why"><span>${ACC[k].n}</span><b class="${s.profit >= 0 ? 'pos' : 'neg'}">${sEur(s.profit)} · ROI ${sPct(s.roi)}</b></div>`; }).join('')}</div>
     <div class="gl small muted">Teste às cegas antes de nascer (jun 2025 → jun 2026, jogos de tour): o Elo do Vi acertou 65% (ATP) e 67% (WTA) dos vencedores, contra 63%/62% do ranking.</div>`;
   openSheet('Estatísticas', h);
@@ -474,10 +488,64 @@ function openHelp() {
   const q = (t, x) => `<div class="gl"><b>${t}</b><div class="small" style="margin-top:4px;line-height:1.5">${x}</div></div>`;
   openSheet('O que quer dizer', q('Vencedor', 'Quem ganha o encontro. Se um jogador desiste, a Betano tem regras próprias; o Vi anula as apostas de jogos/handicap e mantém a de vencedor só se já houve pelo menos um set acabado.') + q('Handicap de jogos', '«Shelton −3,5 jogos» ganha se o Shelton fizer pelo menos mais 4 jogos do que o adversário no encontro todo. «Jodar +3,5» ganha se o Jodar perder por 3 jogos ou menos (ou ganhar).') + q('Total de jogos', 'Soma dos jogos de todos os sets. 6-4 6-3 = 19 jogos. «Mais de 21,5» precisa de 22 ou mais.') + q('Odd justa e valor', 'Odd justa = 1 ÷ probabilidade do Vi. Se a Betano pagar mais do que a odd justa, há valor (a longo prazo ganha-se).') + q('Elo', 'Força de cada jogador pelos resultados. 2000+ = top mundial; diferença de 200 pontos ≈ 76% para o mais forte.'));
 }
+function botCurve(c) {
+  if (c.length < 2) return '';
+  const W = 320, H = 90, mn = Math.min(0, ...c), mx = Math.max(0, ...c), sp = mx - mn || 1, x = i => 8 + i / (c.length - 1) * (W - 16), y = v => 8 + (mx - v) / sp * (H - 16);
+  const pts = c.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' '), last = c[c.length - 1];
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin:6px 0"><line x1="8" x2="${W - 8}" y1="${y(0)}" y2="${y(0)}" stroke="rgba(255,255,255,.3)" stroke-dasharray="3 3"/><polyline points="${pts}" fill="none" stroke="${last >= 0 ? 'var(--pos)' : 'var(--neg)'}" stroke-width="2.5" stroke-linejoin="round"/><circle cx="${x(c.length - 1)}" cy="${y(last)}" r="3.5" fill="${last >= 0 ? 'var(--pos)' : 'var(--neg)'}"/></svg><div class="small muted">Lucro acumulado do bot, aposta a aposta (linha tracejada = zero).</div>`;
+}
+function botStatsBlock(S, noTop) {
+  const row = (lbl, txt, cls) => `<div class="why"><span>${lbl}</span><b class="${cls || ''}">${txt}</b></div>`;
+  let h = (noTop ? '' : attr('Acerto no vencedor', S.hit == null ? 0 : S.hit * 100, S.hit == null ? '—' : `${pct(S.hit)} (${S.w}-${S.l})`) + row('Lucro', S.roi == null ? '—' : `${sEur(S.pl)} · ROI ${sPct(S.roi)}`, S.pl > 0 ? 'pos' : S.pl < 0 ? 'neg' : '')) + botCurve(S.curve);
+  h += row('Com o favorito da casa', S.favN ? `${S.favW}/${S.favN} · ${sEur(S.favPl)}` : '—', S.favPl > 0 ? 'pos' : S.favPl < 0 ? 'neg' : '') +
+    row('Contra a casa (azarão)', S.dogN ? `${S.dogW}/${S.dogN} · ${sEur(S.dogPl)}` : '—', S.dogPl > 0 ? 'pos' : S.dogPl < 0 ? 'neg' : '') +
+    row('Quando tem 70%+ de certeza', S.confN ? `${S.confW}/${S.confN} (${pct(S.confW / S.confN)})` : '—') +
+    row('Teste às cegas', BOT_TEST.txt, 'muted');
+  const gs = Object.entries(S.byG).filter(([, o]) => o.n >= 3).sort((a, b) => b[1].n - a[1].n);
+  if (gs.length) h += `<table class="tbl" style="margin-top:8px"><tr><th style="text-align:left">Circuito · piso</th><th>V/N</th><th>Lucro</th></tr>${gs.map(([k, o]) => `<tr><td style="text-align:left">${esc(k)}</td><td>${o.w}/${o.n}</td><td class="${o.pl >= 0 ? 'pos' : 'neg'}">${sEur(o.pl)}</td></tr>`).join('')}</table>`;
+  if (S.days.length) h += `<table class="tbl" style="margin-top:8px"><tr><th style="text-align:left">Dia</th><th>V-D</th><th>Lucro</th></tr>${S.days.slice(0, 14).map(x => `<tr><td style="text-align:left">${new Date(x.k + 'T12:00:00').toLocaleDateString('pt-PT', { weekday: 'short', day: '2-digit', month: '2-digit' })}</td><td>${x.w}-${x.l}</td><td class="${x.pl >= 0 ? 'pos' : 'neg'}">${sEur(x.pl)}</td></tr>`).join('')}</table>`;
+  return h;
+}
+function botHome() {
+  const S = botStats(); if (!CFG.piOn && !S.n) return '';
+  return `<div class="gl" style="cursor:pointer" onclick="ACCF='pi';CT='contas';go('contas')"><div class="h3">${ic('robot')} Vi sozinho · bot automático<span class="r">${CFG.piOn ? '<b class="pos">ligado</b>' : '<b class="neg">desligado</b>'}</span></div>
+    <div class="opinion" style="margin:6px 0 8px"><div class="face">${viFace(S.roi == null ? 'ok' : S.roi >= 0 ? 'win' : 'sad')}</div><div class="small">${S.open ? `Tenho <b>${S.open} aposta${S.open === 1 ? '' : 's'}</b> em jogo (${eur(S.openL.reduce((s, b) => s + b.stake, 0))}): ${S.openL.slice(0, 3).map(b => esc(b.lb.replace(' ganha', '').replace(' vence', ''))).join(', ')}${S.open > 3 ? '…' : ''}.` : 'Aposto sozinho em todos os jogos com odds das próximas 36 horas, quando atualizas.'}</div></div>
+    ${S.w + S.l ? attr('Acerto', S.hit * 100, `${pct(S.hit)} (${S.w}-${S.l})`) + `<div class="why"><span>Lucro</span><b class="${S.pl >= 0 ? 'pos' : 'neg'}">${sEur(S.pl)} · ROI ${sPct(S.roi)}</b></div>` : ''}
+    <div class="small muted" style="margin-top:4px">Toca para ver tudo o que o bot fez.</div></div>`;
+}
+function botMini() {
+  const S = botStats();
+  return `<div class="gl" style="cursor:pointer" onclick="ACCF='pi';render()"><div class="opinion" style="margin:0"><div class="face">${viFace(S.roi == null ? 'ok' : S.roi >= 0 ? 'win' : 'sad')}</div><div><b>Vi sozinho</b> · ${CFG.piOn ? 'ligado' : '<span class="neg">desligado</span>'}<div class="small muted">${S.n ? `${S.n} apostas sozinho · ${S.w}-${S.l} · ${S.open} em jogo${S.roi != null ? ' · ROI ' + sPct(S.roi) : ''}` : 'Aposta sozinho em todos os jogos com odds quando atualizas. Toca para ver.'}</div></div></div></div>`;
+}
+function botPanel() {
+  const S = botStats(), nf = S.w + S.l;
+  const verdict = nf < 50 ? `Ainda é cedo: com ${nf} apostas fechadas manda a sorte. Começa a ler a partir de ~100; com confiança, a partir de ~300.`
+    : S.roi >= 0 ? 'Está a dar lucro: melhor do que se esperava. Continua a observar antes de acreditar.'
+    : S.roi > -0.06 ? 'Perto do esperado: acerta bastante, mas os favoritos pagam pouco e a margem da casa come o resto.'
+    : 'Abaixo do esperado: as casas estão a saber mais do que ele (lesões, cansaço). É por isso que a app junta as odds.';
+  return `<div class="gl"><div class="h3">${ic('robot')} Como se porta sozinho<span class="r">${CFG.piOn ? 'ligado' : 'desligado'}</span></div>
+    <div class="opinion"><div class="face">${viFace('ok')}</div><div class="small">Em cada jogo com odds das próximas 36 horas aposto <b>${eur(CFG.piStake)}</b> no jogador que o <b>meu Elo</b> prefere (sem copiar as odds), à odd da ESPN do momento. Ninguém me mexe: é a experiência honesta.</div></div>
+    ${botStatsBlock(S)}
+    <div class="small" style="margin-top:8px">${verdict}</div>
+    <div class="small muted" style="margin-top:8px">Eu só aposto quando atualizas a app: abre-a pelo menos uma vez por dia antes dos jogos.</div>
+    ${!CFG.piOn ? `<button class="btn or full" style="margin-top:12px" onclick="CFG.piOn=true;LS.set('cfg',CFG);pilotRun();render()">Ligar o Vi sozinho</button>` : ''}</div>`;
+}
+function exportPreds() {
+  const f = v => String(v == null ? '' : v).replace('.', ',');
+  const rows = [['dia', 'circuito', 'torneio', 'piso', 'melhor_de', 'jogador_a', 'jogador_b', 'rank_a', 'rank_b', 'vencedor', 'resultado', 'vi_prob_a', 'elo_prob_a', 'casa_prob_a', 'odd_a', 'odd_b', 'jogos_previstos', 'jogos_reais', 'vencedor_certo', 'aposta_vi', 'odd', 'resultado_aposta', 'unidades']];
+  Object.entries(PREDS).forEach(([id, p]) => { const m = mOf(id); if (!m || m.s !== 'post' || !m.w) return; const v = verdict(m); rows.push([p.ed, String(m.t).toUpperCase(), m.ev || p.ev || '', SURF_NAME[m.sf] || '', m.bo || p.bo || '', m.a.n, m.b.n, m.a.rk || '', m.b.rk || '', m.w === 'a' ? m.a.n : m.b.n, m.sets.map(x => x[0] + '-' + x[1]).join(' '), f(p.pA), f(p.pE), f(p.nv), f(p.oa), f(p.ob), f(p.eg), gameTot(m), v ? (v.win ? 1 : 0) : '', p.pk ? p.pk.lb : '', p.pk ? f(p.pk.odd) : '', v && v.pk ? v.pkr : '', v && v.pk ? f(r2(v.pku)) : '']); });
+  const csv = '﻿' + rows.map(r => r.map(x => /[;"\n]/.test(String(x)) ? '"' + String(x).replace(/"/g, '""') + '"' : x).join(';')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })); a.download = 'mister-vi-previsoes-' + today() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('Ficheiro gerado (abre no Excel)');
+}
+function safeLegStats() {
+  let n = 0, w = 0, p = 0; Object.values(SLIPS).forEach(S => S.legs.forEach(l => { const r = outcome(l, mOf(l.g)); if (r === 'won' || r === 'lost') { n++; p += l.p; if (r === 'won') w++; } }));
+  return n ? { n, w, p: p / n } : null;
+}
 function openCfg() {
   const inp = (id, l, v) => `<label class="f">${l}</label><input class="in" id="${id}" inputmode="decimal" value="${ln(v)}">`;
   openSheet('Definições', `<div class="row">${['tu', 'to', 'pi'].map(k => `<div style="flex:1">${inp('c_' + k, 'Banca ' + ACC[k].n, CFG.bank[k])}</div>`).join('')}</div>${inp('c_min', 'Aposta mínima (€)', CFG.min)}${inp('c_pis', 'Aposta do piloto (€)', CFG.piStake)}${inp('c_w', 'Peso da odd da casa (%)', Math.round(CFG.mktW * 100))}
-   <label class="f">Piloto automático</label><div class="seg"><button id="c_on" class="${CFG.piOn ? 'on' : ''}" onclick="this.classList.add('on');$('#c_off').classList.remove('on')">Ligado</button><button id="c_off" class="${!CFG.piOn ? 'on' : ''}" onclick="this.classList.add('on');$('#c_on').classList.remove('on')">Desligado</button></div>
+   <label class="f">Vi sozinho (bot automático)</label><div class="seg"><button id="c_on" class="${CFG.piOn ? 'on' : ''}" onclick="this.classList.add('on');$('#c_off').classList.remove('on')">Ligado</button><button id="c_off" class="${!CFG.piOn ? 'on' : ''}" onclick="this.classList.add('on');$('#c_on').classList.remove('on')">Desligado</button></div>
    <button class="btn or full" style="margin-top:14px" onclick="saveCfg()">Guardar</button><button class="btn full" style="margin-top:10px" onclick="askConfirm('Apagar todas as apostas?','Apagar','wipeBets()')">Recomeçar as contas</button>`);
 }
 function saveCfg() { const v = id => num($('#' + id).value); ['tu', 'to', 'pi'].forEach(k => { const x = v('c_' + k); if (x >= 0) CFG.bank[k] = r2(x); }); if (v('c_min') > 0) CFG.min = r2(v('c_min')); if (v('c_pis') > 0) CFG.piStake = r2(v('c_pis')); if (v('c_w') != null) CFG.mktW = clamp(v('c_w'), 0, 100) / 100; CFG.piOn = $('#c_on').classList.contains('on'); LS.set('cfg', CFG); closeSheet(); toast('Guardado'); render(); }

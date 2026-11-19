@@ -1,5 +1,5 @@
 /* Mister Vi · service worker: app em rede primeiro; ícones, dados do Vi (ratings.json) e letras guardados; ESPN nunca */
-const VERSION = 'vi-v1.1.0';
+const VERSION = 'vi-v1.2.0';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './ratings.json'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k.startsWith('vi-') && k !== VERSION && k !== 'vi-runtime').map(k => caches.delete(k)))).then(() => self.clients.claim())); });
