@@ -11,7 +11,7 @@
      validado contra os resultados reais.
    Só vai à internet quando tocas em ↻. Tudo fica no telemóvel («vi_…»).
    ===================================================================== */
-const APP_VER = '1.2.1';
+const APP_VER = '1.2.2';
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));

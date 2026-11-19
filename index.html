@@ -210,7 +210,7 @@ input.in,select.in{width:100%;border-radius:16px;background:rgba(0,0,0,.25);bord
      validado contra os resultados reais.
    Só vai à internet quando tocas em ↻. Tudo fica no telemóvel («vi_…»).
    ===================================================================== */
-const APP_VER = '1.2.1';
+const APP_VER = '1.2.2';
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -1027,7 +1027,7 @@ function boletimPanel(off) {
   if (BT === 'seg') {
     if (!C.length) h += `<div class="small muted" style="margin-top:10px">Nenhuma seleção chega aos ${pct(SAFE_LEG)}.</div>`;
     else h += `<div class="small muted" style="margin:10px 0 2px">Seleções com ${pct(SAFE_LEG)}+, juntas enquanto o boletim passa dos ${pct(SAFE_SLIP)}. As odds em cinzento são só estimativa: para registar, mete a da Betano em cada uma.</div>` +
-      C.map((c, i) => { const key = legKey(c), od = SS.odd[key] != null ? SS.odd[key] : c.odd; return `<div class="leg"><input type="checkbox" ${SS.sel.has(key) ? 'checked' : ''} onchange="ssTog(${i},this.checked)"><div><div class="t">${esc(c.lb)}</div><div class="g">${hhmm(c.m.d)} · ${esc(mLabel(c.m))} · ${esc(mkName(c.mk))}</div><div class="p">Vi ${pct(c.p)}</div></div><input class="od${SS.odd[key] == null ? ' est' : ''}" inputmode="decimal" value="${ln(od)}" oninput="ssOdd(${i},this)"></div>`; }).join('') + `<div class="sum" id="ssSum"></div>`;
+      C.map((c, i) => { const key = legKey(c), od = SS.odd[key] != null ? SS.odd[key] : c.odd; return `<div class="leg"><input type="checkbox" ${SS.sel.has(key) ? 'checked' : ''} onchange="ssTog(${i},this.checked)"><div><div class="t">${esc(c.lb)}</div><div class="g">${dayLbl(c.m.d)} · ${hhmm(c.m.d)} · ${esc(mLabel(c.m))} · ${esc(mkName(c.mk))}</div><div class="p">Vi ${pct(c.p)}</div></div><input class="od${SS.odd[key] == null ? ' est' : ''}" inputmode="decimal" value="${ln(od)}" oninput="ssOdd(${i},this)"></div>`; }).join('') + `<div class="sum" id="ssSum"></div>`;
   } else if (BT === 'fav') {
     h += fav.length ? `<div class="small muted" style="margin:10px 0 2px">Os favoritos mais claros do Vi. Compara a <b>odd justa</b> com a da Betano: se a Betano pagar mais, há valor.</div>` + fav.map(({ m, P }) => `<div class="why" onclick="GT='ana';openMatch('${m.id}')"><span><b style="color:#fff">${esc(pName(m, P.fav))}</b><div class="small muted">vs ${esc(pName(m, P.fav === 'a' ? 'b' : 'a'))} · ${hhmm(m.d)} · ${esc(m.ev)}</div></span><b>${pct(P.conf)}<div class="small" style="color:var(--or2)">justa ${odd2(1 / P.conf)}</div></b></div>`).join('') : `<div class="small muted" style="margin-top:10px">Sem favoritos claros (70%+).</div>`;
   } else {
