@@ -1,0 +1,90 @@
+{
+ "atp": {
+  "tour": {
+   "n": [
+    19712,
+    6843,
+    2633
+   ],
+   "calib_a": 0.95,
+   "elo_cru_teste": 0.6194,
+   "elo_cal_teste": 0.6182,
+   "coefs": {
+    "elo": 0.887,
+    "svret": 0.3163,
+    "age": -0.1599,
+    "layoff": -0.4458
+   },
+   "escolhidos": [
+    "svret",
+    "age",
+    "layoff"
+   ],
+   "teste_base": 0.6181,
+   "teste_com_fatores": 0.6118,
+   "ganho_x1000": 6.28
+  },
+  "chall": {
+   "n": [
+    44865,
+    19339,
+    9364
+   ],
+   "calib_a": 0.945,
+   "elo_cru_teste": 0.6342,
+   "elo_cal_teste": 0.6342,
+   "coefs": {
+    "elo": 0.799,
+    "svret": 0.3495,
+    "age": -0.1541,
+    "prevmin": -0.0587
+   },
+   "escolhidos": [
+    "svret",
+    "age",
+    "prevmin"
+   ],
+   "teste_base": 0.6342,
+   "teste_com_fatores": 0.6295,
+   "ganho_x1000": 4.73
+  }
+ },
+ "wta": {
+  "tour": {
+   "n": [
+    18508,
+    6374,
+    2506
+   ],
+   "calib_a": 0.975,
+   "elo_cru_teste": 0.607,
+   "elo_cal_teste": 0.607,
+   "coefs": {
+    "elo": 0.897,
+    "svret": 0.2645,
+    "age": -0.1294
+   },
+   "escolhidos": [
+    "svret",
+    "age"
+   ],
+   "teste_base": 0.607,
+   "teste_com_fatores": 0.6035,
+   "ganho_x1000": 3.45
+  },
+  "chall": {
+   "n": [
+    3001,
+    2690,
+    2432
+   ],
+   "calib_a": 1.198,
+   "elo_cru_teste": 0.599,
+   "elo_cal_teste": 0.5984,
+   "escolhidos": [],
+   "teste_base": 0.5981,
+   "teste_com_fatores": 0.5981,
+   "ganho_x1000": 0.0
+  }
+ }
+}

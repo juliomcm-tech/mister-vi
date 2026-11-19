@@ -4,13 +4,14 @@
    - Ratings Elo (geral + superfície) calculados com o arquivo público de
      Jeff Sackmann (todos os jogos até junho 2026, incl. Challenger/ITF) e
      atualizados com os resultados da ESPN.
-   - Teste às cegas (jun 2025 → jun 2026, jogos de tour): acerta 65% (ATP)
-     e 67% (WTA) dos vencedores, melhor que o ranking (63%/62%), calibrado.
+   - Teste às cegas (jun 2025 → jun 2026, jogos de tour): acerta 66% (ATP)
+     e 66% (WTA) dos vencedores, melhor que o ranking (63%/62%), calibrado.
+   - Fatores extra testados às cegas: entram serviço+resposta, idade, paragem.
    - Jogos (handicap/total): modelo ponto a ponto com «dia bom / dia mau»,
      validado contra os resultados reais.
    Só vai à internet quando tocas em ↻. Tudo fica no telemóvel («vi_…»).
    ===================================================================== */
-const APP_VER = '1.0.0';
+const APP_VER = '1.1.0';
 const $ = s => document.querySelector(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
@@ -36,7 +37,7 @@ function american(x) {
   if (Math.abs(v) >= 100) return r2(v > 0 ? 1 + v / 100 : 1 + 100 / Math.abs(v));
   return v > 1 && v < 50 ? r2(v) : null;
 }
-const normName = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+const normName = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[-‐‑]/g, ' ').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
 
 /* ---------- datas ---------- */
 const fmtET = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -49,10 +50,11 @@ const dayLbl = iso => new Date(iso).toLocaleDateString('pt-PT', { weekday: 'shor
 
 /* ---------- guardado ---------- */
 let SEED = null;                                     // ratings.json (carregado no arranque)
-let PU = LS.get('pu', { atp: {}, wta: {} });         // jogadores atualizados depois do arquivo
-let DB = LS.get('db', { m: {}, days: {} });           // jogos da ESPN
-let DONE = LS.get('done', {});                        // jogos já contados no Elo
-let BETS = LS.get('bets', []), PREDS = LS.get('preds', {}), DEPOS = LS.get('depos', []), SLIPS = LS.get('slips', {}), MAN = LS.get('man', {});
+let PU = LS.get('pu', null); if (!PU || !PU.atp || !PU.wta) PU = { atp: {}, wta: {} };   // jogadores atualizados depois do arquivo
+let DB = LS.get('db', null); if (!DB || typeof DB !== 'object' || !DB.m || !DB.days) DB = { m: {}, days: {} };   // jogos da ESPN
+let DONE = LS.get('done', {}) || {};                        // jogos já contados no Elo
+const arrOr = v => Array.isArray(v) ? v : [], objOr = v => v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+let BETS = arrOr(LS.get('bets', [])), PREDS = objOr(LS.get('preds', {})), DEPOS = arrOr(LS.get('depos', [])), SLIPS = objOr(LS.get('slips', {})), MAN = objOr(LS.get('man', {}));
 const CFG_DEF = { bank: { tu: 100, to: 100, pi: 250 }, min: 0.25, piOn: true, piStake: 2.5, evMin: 0.05, mktW: 0.6, oddMin: 1.25, oddMax: 5 };
 let CFG = Object.assign({}, CFG_DEF, LS.get('cfg', {})); CFG.bank = Object.assign({}, CFG_DEF.bank, CFG.bank || {});
 const saveDB = () => { if (!LS.set('db', DB)) { const cut = ymdAdd(today(), -45); Object.keys(DB.m).forEach(id => { if (DB.m[id].ed < cut) delete DB.m[id]; }); LS.set('db', DB); } };
@@ -65,27 +67,36 @@ const SURF_KEY = { hard: 'h', clay: 'c', grass: 'g', carpet: 'h' };
 const SURF_NAME = { h: 'Piso duro', c: 'Terra batida', g: 'Relva' };
 function seedP(tour, k) {
   const T = SEED && SEED.tours[tour]; if (!T) return null;
-  const u = PU[tour][k]; if (u) return u;
-  const r = T.p[k]; if (!r) return null;
-  return { nm: r[0], ioc: r[1], e: r[2], es: { h: r[3], c: r[4], g: r[5] }, n: r[6], ns: { h: r[7], c: r[8], g: r[9] }, last: r[10], rank: r[11], sv: r[12], rv: r[13] };
+  const u = PU[tour][k], r = T.p[k];
+  if (u) return u;
+  if (!r) return null;
+  return { nm: r[0], ioc: r[1], e: r[2], es: { h: r[3], c: r[4], g: r[5] }, n: r[6], ns: { h: r[7], c: r[8], g: r[9] }, last: r[10], rank: r[11], sv: r[12], rv: r[13], by: r[14] || 0 };
+}
+let CMP = null;                                       // índice «sem espaços» (Jan-Lennard / Janlennard / Jan Lennard)
+function seedKey(tour, k) {
+  const T = SEED && SEED.tours[tour] && SEED.tours[tour].p; if (!T) return null;
+  if (T[k]) return k;
+  if (!CMP) { CMP = {}; ['atp', 'wta'].forEach(t => { CMP[t] = {}; Object.keys(SEED.tours[t].p).forEach(x => { const c = x.replace(/ /g, ''); CMP[t][c] = CMP[t][c] === undefined ? x : null; }); }); }
+  const c = CMP[tour][k.replace(/ /g, '')]; if (c) return c;
+  const parts = k.split(' '), last = parts[parts.length - 1], ini = parts[0] ? parts[0][0] : '';
+  const cand = Object.keys(T).filter(x => (x.endsWith(' ' + last) || x.replace(/ /g, '').endsWith(last)) && x[0] === ini);
+  return cand.length === 1 ? cand[0] : null;
 }
 function getP(tour, name, rank, ioc) {
   const k = normName(name);
-  let P = seedP(tour, k);
-  if (!P && SEED) {                                  // nome com outra grafia: tenta «apelido + inicial»
-    const parts = k.split(' '), last = parts[parts.length - 1], ini = parts[0] ? parts[0][0] : '';
-    const T = SEED.tours[tour].p; const cand = Object.keys(T).filter(x => x.endsWith(' ' + last) && x[0] === ini);
-    if (cand.length === 1) P = seedP(tour, cand[0]);
-  }
+  let P = PU[tour][k] || null;                       // primeiro o que a app já atualizou (guardado com este nome)
+  if (P) { const sk = seedKey(tour, k), r = sk && SEED.tours[tour].p[sk]; if (P.by == null) P.by = r && r[14] || 0; if (P.sv == null && r) { P.sv = r[12]; P.rv = r[13]; } }
+  if (!P && SEED) { const sk = seedKey(tour, k); if (sk) P = seedP(tour, sk); if (P && PU[tour][sk] === P) P = Object.assign({}, P); }
   if (!P) {                                         // jogador novo: Elo a partir do ranking
     const T = SEED ? SEED.tours[tour] : null, rr = T ? T.rank2elo : [1900, -150];
     const e0 = rank > 0 ? clamp(rr[0] + rr[1] * Math.log(rank), 1300, 2300) : (tour === 'atp' ? 1550 : 1650);
-    P = { nm: name, ioc: ioc || '', e: e0, es: { h: e0, c: e0, g: e0 }, n: 0, ns: { h: 0, c: 0, g: 0 }, last: '', rank: rank || 0, sv: 0, rv: 0, nov: true };
+    P = { nm: name, ioc: ioc || '', e: e0, es: { h: e0, c: e0, g: e0 }, n: 0, ns: { h: 0, c: 0, g: 0 }, last: '', rank: rank || 0, sv: 0, rv: 0, by: 0, nov: true };
   }
   if (rank) P.rank = rank;
   return P;
 }
 function setP(tour, name, P) { PU[tour][normName(name)] = P; }
+const cutOf = tour => { const T = SEED.tours[tour]; return T.cut || T.last || '0'; };   // fim do arquivo (com os torneios a meio)
 const KF = (tour, n) => { const p = SEED.tours[tour].par; return p.k / Math.pow(n + p.off, p.sh); };
 function eloUpdate(m) {
   const tour = m.t, sk = m.sf, A = getP(tour, m.a.n, m.a.rk, m.a.ioc), B = getP(tour, m.b.n, m.b.rk, m.b.ioc);
@@ -97,9 +108,17 @@ function eloUpdate(m) {
   W.n++; L.n++; W.ns[sk]++; L.ns[sk]++; W.last = L.last = m.ed;
   setP(tour, m.a.n, A); setP(tour, m.b.n, B);
 }
+/* mudança de versão do modelo: refaz o Elo desde o fim do arquivo com as regras novas (superfícies certas, etc.) */
+function migrate() {
+  if (LS.get('mver', '') === '2') return;
+  Object.values(DB.m).forEach(m => { if (!m.sfMan) m.sf = surfOf(m.ev, m.d); });
+  PU = { atp: {}, wta: {} }; DONE = {};
+  LS.set('pu', PU); LS.set('done', DONE); saveDB(); LS.set('mver', '2');
+  applyResults();
+}
 function applyResults() {
   let n = 0;
-  Object.values(DB.m).filter(m => m.s === 'post' && m.w && !DONE[m.id] && m.ed > (SEED.tours[m.t].last || '0')).sort((x, y) => x.d < y.d ? -1 : 1).forEach(m => { eloUpdate(m); DONE[m.id] = 1; n++; });
+  Object.values(DB.m).filter(m => m.s === 'post' && m.w && !DONE[m.id] && m.ed > cutOf(m.t)).sort((x, y) => x.d < y.d ? -1 : 1).forEach(m => { eloUpdate(m); DONE[m.id] = 1; n++; });
   if (n) { LS.set('pu', PU); LS.set('done', DONE); }
   return n;
 }
@@ -123,9 +142,10 @@ const SLAMS = /australian open|roland garros|french open|wimbledon|us open/i;
 function surfOf(evName, iso) {
   const k = normName(evName).replace(/\b(presented by|powered by|by)\b.*$/, '').trim();
   const S = (SEED && SEED.surf) || {};
-  if (S[k]) return SURF_KEY[S[k]] || 'h';
+  const sk = v => SURF_NAME[v] ? v : (SURF_KEY[v] || 'h');      // o arquivo guarda h/c/g
+  if (S[k]) return sk(S[k]);
   const hit = Object.keys(S).find(x => x.length > 4 && (k.includes(x) || x.includes(k)));
-  if (hit) return SURF_KEY[S[hit]] || 'h';
+  if (hit) return sk(S[hit]);
   if (/roland garros|french open|monte carlo|madrid|rome|internazionali|estoril|barcelona|hamburg|geneva|lyon|bastad|gstaad|kitzbuhel|umag|buenos aires|rio|santiago|houston|marrakech|bucharest|munich|clay/i.test(evName)) return 'c';
   if (/wimbledon|queens|halle|stuttgart|s hertogenbosch|eastbourne|mallorca|newport|grass|berlin|bad homburg|nottingham/i.test(evName)) return 'g';
   const m = new Date(iso).getMonth() + 1, dd = new Date(iso).getDate();
@@ -159,7 +179,7 @@ function ingestEvent(ev, tour) {
         const o = c.odds && c.odds[0];
         if (o) { const ha = C[0].homeAway === 'away' ? 'awayTeamOdds' : 'homeTeamOdds', hb = ha === 'homeTeamOdds' ? 'awayTeamOdds' : 'homeTeamOdds'; const oa = american(o[ha] && (o[ha].moneyLine != null ? o[ha].moneyLine : o[ha].odds)), ob = american(o[hb] && (o[hb].moneyLine != null ? o[hb].moneyLine : o[hb].odds)); if (oa && ob) m.o = { a: oa, b: ob, p: (o.provider && o.provider.name) || 'casa' }; }
       } catch (e) {}
-      if (!m.o && old && old.o) m.o = old.o;
+      if (old && old.o && (old.o.p === 'Betano' || !m.o)) m.o = old.o;     // a odd que meteste da Betano manda
       DB.m[id] = m; n++;
     });
   });
@@ -173,15 +193,17 @@ async function refresh() {
   const T = today(); let fails = 0, got = 0;
   try {
     // 1.ª vez: do fim do arquivo até hoje (uma vez só); depois: últimos 3 dias + amanhã
-    const start = DB.days.__from || ymdAdd(SEED.tours.atp.last, 1);
+    const start = DB.days.__from || ymdAdd(cutOf('atp'), 1);
     const want = [];
     for (let d = start; d <= ymdAdd(T, 1); d = ymdAdd(d, 1)) if (!DB.days[d] || d >= ymdAdd(T, -3)) want.push(d);
     const big = want.length > 6;
     for (let i = 0; i < want.length; i++) {
       const d = want[i];
       setUpd(big ? `A pôr a época em dia: ${i + 1}/${want.length} dias…` : `A buscar ${d.slice(6)}/${d.slice(4, 6)}…`);
-      for (const tour of ['atp', 'wta']) { try { got += await fetchDay(tour, d); } catch (e) { fails++; } }
-      if (d < ymdAdd(T, -3)) DB.days[d] = 1;
+      let df = 0;
+      for (const tour of ['atp', 'wta']) { try { got += await fetchDay(tour, d); } catch (e) { fails++; df++; } }
+      if (d < ymdAdd(T, -3) && !df) DB.days[d] = 1;          // só fica «feito» se as duas vieram bem
+      if (i >= 2 && !got && fails >= 2 * (i + 1)) break;      // sem ligação: não insistir 300 vezes
       if (big && i % 10 === 9) { saveDB(); await new Promise(r => setTimeout(r, 150)); }
     }
     DB.days.__from = DB.days.__from || start;
@@ -233,18 +255,45 @@ function matchDist(sa, sb, bo) {
   const key = sa + '|' + sb + '|' + bo; if (MD.has(key)) return MD.get(key);
   const ha = hold(sa), hb = hold(sb);
   const SA = setDist(ha, hb, tiebreak(sa, sb)), SB = setDist(hb, ha, tiebreak(sb, sa)).map(([x, y, p]) => [y, x, p]);
+  // programação dinâmica set a set: estados iguais (sets, jogos, diferença, quem serve) juntam-se — rápido também à melhor de 5
   const need = bo === 3 ? 2 : 3, res = new Map();
-  const go = (wa, wb, g, d, aFirst, p) => {
-    if (wa === need || wb === need) { const k = (wa === need ? 1 : 0) + '|' + g + '|' + d + '|' + (wa + wb); res.set(k, (res.get(k) || 0) + p); return; }
-    const D = aFirst ? SA : SB;
-    for (const [x, y, q] of D) go(wa + (x > y), wb + (y > x), g + x + y, d + x - y, (x + y) % 2 === 0 ? aFirst : !aFirst, p * q);
-  };
-  go(0, 0, 0, 0, true, 0.5); go(0, 0, 0, 0, false, 0.5);
+  let st = new Map([['0|0|0|0|1', 0.5], ['0|0|0|0|0', 0.5]]);
+  while (st.size) {
+    const nx = new Map();
+    for (const [k, p] of st) {
+      const [wa, wb, g, d, af] = k.split('|').map(Number), D = af ? SA : SB;
+      for (const [x, y, q] of D) {
+        const a2 = wa + (x > y), b2 = wb + (y > x), g2 = g + x + y, d2 = d + x - y, pq = p * q;
+        if (a2 === need || b2 === need) { const kk = (a2 === need ? 1 : 0) + '|' + g2 + '|' + d2 + '|' + (a2 + b2); res.set(kk, (res.get(kk) || 0) + pq); }
+        else { const f2 = (x + y) % 2 === 0 ? af : 1 - af, kk = a2 + '|' + b2 + '|' + g2 + '|' + d2 + '|' + f2; nx.set(kk, (nx.get(kk) || 0) + pq); }
+      }
+    }
+    st = nx;
+  }
   const arr = [...res].map(([k, p]) => { const [w, g, d, n] = k.split('|').map(Number); return { w, g, d, n, p }; });
-  if (MD.size > 4000) MD.clear();
+  if (MD.size > 20000) MD.clear();
   MD.set(key, arr); return arr;
 }
 const pwinD = D => D.reduce((s, x) => s + (x.w ? x.p : 0), 0);
+/* só a probabilidade de ganhar (sem contar jogos): muito mais rápida, serve para afinar a mistura */
+const PW = new Map();
+function pwinFast(sa, sb, bo) {
+  sa = Math.round(clamp(sa, 0.3, 0.92) * 1000) / 1000; sb = Math.round(clamp(sb, 0.3, 0.92) * 1000) / 1000;
+  const key = sa + '|' + sb + '|' + bo; if (PW.has(key)) return PW.get(key);
+  const ha = hold(sa), hb = hold(sb), SA = setDist(ha, hb, tiebreak(sa, sb)), SB = setDist(hb, ha, tiebreak(sb, sa)).map(([x, y, p]) => [y, x, p]);
+  // por set: P(A ganha o set) e P(muda quem serve a seguir), conforme quem serve primeiro
+  const summ = D => { let w = 0, wf = 0, lf = 0; D.forEach(([x, y, p]) => { const flip = (x + y) % 2 === 1; if (x > y) { w += p; if (flip) wf += p; } else if (flip) lf += p; }); return { w, wf, lf }; };
+  const S = [summ(SB), summ(SA)], need = bo === 3 ? 2 : 3, M = new Map();
+  const go = (wa, wb, af) => {
+    if (wa === need) return 1; if (wb === need) return 0;
+    const k = wa * 100 + wb * 10 + af; if (M.has(k)) return M.get(k);
+    const s_ = S[af], wKeep = s_.w - s_.wf, lKeep = 1 - s_.w - s_.lf;
+    const v = wKeep * go(wa + 1, wb, af) + s_.wf * go(wa + 1, wb, 1 - af) + lKeep * go(wa, wb + 1, af) + s_.lf * go(wa, wb + 1, 1 - af);
+    M.set(k, v); return v;
+  };
+  const v = 0.5 * go(0, 0, 1) + 0.5 * go(0, 0, 0);
+  if (PW.size > 50000) PW.clear(); PW.set(key, v); return v;
+}
 const MIX = { atp3: 0.055, atp5: 0.065, wta3: 0.05 };
 function gamesDist(tour, sf, svA, rvA, svB, rvB, p, bo) {
   const base = (SEED.tours[tour].base || {})[{ h: 'Hard', c: 'Clay', g: 'Grass' }[sf]] || (tour === 'atp' ? 0.64 : 0.565);
@@ -252,24 +301,52 @@ function gamesDist(tour, sf, svA, rvA, svB, rvB, p, bo) {
   const dl = MIX[tour + bo] || 0.055, W = [[-dl, 0.25], [0, 0.5], [dl, 0.25]];
   const mix = x => { const out = new Map(); W.forEach(([e, w]) => matchDist(sa0 + x + e, sb0 - x - e, bo).forEach(r => { const k = r.w + '|' + r.g + '|' + r.d + '|' + r.n; out.set(k, (out.get(k) || 0) + w * r.p); })); return [...out].map(([k, pp]) => { const [w, g, d, n] = k.split('|').map(Number); return { w, g, d, n, p: pp }; }); };
   let lo = -0.3, hi = 0.3;
-  for (let i = 0; i < 12; i++) { const x = (lo + hi) / 2; if (pwinD(mix(x)) < p) lo = x; else hi = x; }
+  const pw = x => W.reduce((t, [e, w]) => t + w * pwinFast(sa0 + x + e, sb0 - x - e, bo), 0);
+  for (let i = 0; i < 14; i++) { const x = (lo + hi) / 2; if (pw(x) < p) lo = x; else hi = x; }
   return mix((lo + hi) / 2);
 }
 function bo5(p) { let lo = 0, hi = 1, q = 0.5; for (let i = 0; i < 40; i++) { q = (lo + hi) / 2; if (q * q * (3 - 2 * q) < p) lo = q; else hi = q; } return Math.pow(q, 3) * (10 - 15 * q + 6 * q * q); }
 const half = v => Math.floor(v) + 0.5;
+/* Fatores além do Elo — só os que passaram o teste cego (afinado 2015-24, confirmado 2025-06+):
+   serviço+resposta (52 semanas), idade acima dos 31, paragem >60 dias.
+   Testados e NÃO usados (não melhoravam fora da amostra): H2H, forma recente, superfície extra, canhoto, altura. */
+const dayN = s => { s = String(s || '').replace(/-/g, ''); if (s.length < 8) return null; return Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)) / 864e5; };
+function factorsOf(T, A, B, m) {
+  const c = T.fx, k0 = T.calk || 1;
+  if (!c) return { k: k0, sum: 0, list: [] };
+  const yr = (() => { const d = new Date(m.d || Date.now()); return d.getUTCFullYear() + (d.getUTCMonth() + 1) / 12; })();
+  const svr = P => (P.sv || 0) + (P.rv || 0);
+  const ageF = P => P.by > 0 ? Math.max(0, yr - P.by - 31) / 3 : 0;
+  const md = dayN(m.ed || ymdOf(new Date(m.d || Date.now())));
+  const lay = P => { const l = dayN(P.last); return l != null && md != null && md - l > 60 ? 1 : 0; };
+  const list = [
+    { id: 'sv', nm: 'Serviço + resposta (último ano)', v: c.svret[0] * (svr(A) - svr(B)) * 10, a: svr(A), b: svr(B) },
+    { id: 'age', nm: 'Idade (acima dos 31 costuma pesar)', v: c.idade[0] * (ageF(A) - ageF(B)), a: A.by > 0 ? Math.floor(yr - A.by) : null, b: B.by > 0 ? Math.floor(yr - B.by) : null },
+    { id: 'lay', nm: 'Paragem longa (>60 dias sem jogar)', v: c.paragem[0] * (lay(A) - lay(B)), a: lay(A), b: lay(B) }
+  ];
+  return { k: c.elo, sum: list.reduce((s, x) => s + x.v, 0), list };
+}
+const PC = new Map();                                // memória de previsões (a ficha, o cartão e o boletim pedem a mesma várias vezes)
 function predict(m) {
+  const A = getP(m.t, m.a.n, m.a.rk, m.a.ioc), B = getP(m.t, m.b.n, m.b.rk, m.b.ioc), sf = m.sf || 'h', o = m.o || (MAN[m.id] && MAN[m.id].o) || {};
+  const key = [m.id, sf, m.bo, m.d, o.a, o.b, A.e, B.e, A.es[sf], B.es[sf], A.last, B.last, CFG.mktW, CFG.evMin, CFG.oddMin, CFG.oddMax].join('|');
+  const hit = PC.get(m.id); if (hit && hit.k === key) return hit.P;
+  const P = predict0(m); PC.set(m.id, { k: key, P }); return P;
+}
+function predict0(m) {
   const tour = m.t, T = SEED.tours[tour], ws = T.par.ws, sf = m.sf || 'h';
   const A = getP(tour, m.a.n, m.a.rk, m.a.ioc), B = getP(tour, m.b.n, m.b.rk, m.b.ioc);
   const ra = (1 - ws) * A.e + ws * A.es[sf], rb = (1 - ws) * B.e + ws * B.es[sf];
   let p = 1 / (1 + Math.pow(10, (rb - ra) / 400));
   if (m.bo === 5) p = bo5(p);
-  const k = T.calk || 1; p = 1 / (1 + Math.exp(-k * Math.log(p / (1 - p))));
+  const fx = factorsOf(T, A, B, m), z0 = Math.log(p / (1 - p));
+  p = 1 / (1 + Math.exp(-(fx.k * z0 + fx.sum)));
   const pElo = p;
   const odds = m.o || (MAN[m.id] && MAN[m.id].o) || null;
   let pNV = null, W = 0;
   if (odds && odds.a > 1 && odds.b > 1) { pNV = (1 / odds.a) / (1 / odds.a + 1 / odds.b); W = CFG.mktW; p = W * pNV + (1 - W) * pElo; }
   const D = gamesDist(tour, sf, A.sv, A.rv, B.sv, B.rv, p, m.bo);
-  const P = { m, A, B, ra, rb, pElo, pNV, W, pA: p, D, sf, conf: Math.max(p, 1 - p), fav: p >= 0.5 ? 'a' : 'b' };
+  const P = { m, A, B, ra, rb, pElo, pNV, W, pA: p, D, sf, fx, conf: Math.max(p, 1 - p), fav: p >= 0.5 ? 'a' : 'b' };
   P.eg = D.reduce((s, x) => s + x.g * x.p, 0); P.ed = D.reduce((s, x) => s + x.d * x.p, 0);
   P.cands = candidates(m, P);
   const elig = P.cands.filter(c => c.real && c.odd >= CFG.oddMin && c.odd <= CFG.oddMax).sort((a, b) => b.ev - a.ev);
@@ -386,11 +463,12 @@ function newMulti(acc, legs, stake, extra) {
 }
 const gameTot = m => m.sets.reduce((s, x) => s + x[0] + x[1], 0);
 const gameDiff = m => m.sets.reduce((s, x) => s + x[0] - x[1], 0);
+const setDone = ([a, b]) => ((a >= 6 || b >= 6) && Math.abs(a - b) >= 2) || a + b === 13;   // set acabado (6-4, 7-5, 7-6…)
 function outcome(b, m) {
   if (!m) return null;
   if (m.s === 'off') return 'void';
   if (m.s !== 'post' || !m.w) return null;
-  if (m.ret) return b.mk === 'ml' ? (m.sets.length >= 1 && m.sets.some(x => Math.max(x[0], x[1]) >= 6) ? (m.w === b.sel ? 'won' : 'lost') : 'void') : 'void';
+  if (m.ret) return b.mk === 'ml' ? (m.sets.some(setDone) ? (m.w === b.sel ? 'won' : 'lost') : 'void') : 'void';
   if (b.mk === 'ml') return m.w === b.sel ? 'won' : 'lost';
   if (b.mk === 'hg') { const v = (b.sel === 'a' ? gameDiff(m) : -gameDiff(m)) + b.line; return v > 0 ? 'won' : v < 0 ? 'lost' : 'push'; }
   if (b.mk === 'tg') { const v = b.sel === 'o' ? gameTot(m) - b.line : b.line - gameTot(m); return v > 0 ? 'won' : v < 0 ? 'lost' : 'push'; }
@@ -425,11 +503,7 @@ function pilotRun() {
     const stake = Math.max(CFG.min, r2(CFG.piStake)); if (accStats('pi').bal < stake) return;
     newBet('pi', m, v, stake, { p: r2(v.p), ev: r2(v.ev) }); n++;
   });
-  const key = 'piSafe_' + today();
-  if (!LS.get(key, 0)) {
-    const C = safeCands(today()), pick = safeAuto(C), legs = C.filter((_, i) => pick.has(i)), stake = Math.max(CFG.min, r2(CFG.piStake));
-    if (legs.length >= 2 && accStats('pi').bal >= stake) { newMulti('pi', legs.map(c => safeLeg(c)), stake, { src: 'seguro', p: r2(legs.reduce((a, c) => a * c.p, 1)) }); LS.set(key, 1); n++; }
-  }
+  // o boletim seguro NÃO é apostado pelo piloto: as odds seriam inventadas. O registo dele está em «Estatísticas» (acertou/falhou).
   if (n) saveBets(); return n;
 }
 function slipResult(S) {

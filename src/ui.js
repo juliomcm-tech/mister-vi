@@ -164,7 +164,7 @@ function boletimPanel(off) {
    <div class="seg"><button class="${BT === 'seg' ? 'on' : ''}" onclick="BT='seg';render()">${ic('shield')} Seguro</button><button class="${BT === 'fav' ? 'on' : ''}" onclick="BT='fav';render()">${ic('star')} Favoritos</button><button class="${BT === 'val' ? 'on' : ''}" onclick="BT='val';render()">${ic('gem')} Valor</button></div>`;
   if (BT === 'seg') {
     if (!C.length) h += `<div class="small muted" style="margin-top:10px">Nenhuma seleção chega aos ${pct(SAFE_LEG)}.</div>`;
-    else h += `<div class="small muted" style="margin:10px 0 2px">Seleções com ${pct(SAFE_LEG)}+, juntas enquanto o boletim passa dos ${pct(SAFE_SLIP)}. As caixas verdes têm odd estimada: mete a da Betano.</div>` +
+    else h += `<div class="small muted" style="margin:10px 0 2px">Seleções com ${pct(SAFE_LEG)}+, juntas enquanto o boletim passa dos ${pct(SAFE_SLIP)}. As odds em cinzento são só estimativa: para registar, mete a da Betano em cada uma.</div>` +
       C.map((c, i) => { const key = legKey(c), od = SS.odd[key] != null ? SS.odd[key] : c.odd; return `<div class="leg"><input type="checkbox" ${SS.sel.has(key) ? 'checked' : ''} onchange="ssTog(${i},this.checked)"><div><div class="t">${esc(c.lb)}</div><div class="g">${hhmm(c.m.d)} · ${esc(mLabel(c.m))} · ${esc(mkName(c.mk))}</div><div class="p">Vi ${pct(c.p)}</div></div><input class="od${SS.odd[key] == null ? ' est' : ''}" inputmode="decimal" value="${ln(od)}" oninput="ssOdd(${i},this)"></div>`; }).join('') + `<div class="sum" id="ssSum"></div>`;
   } else if (BT === 'fav') {
     h += fav.length ? `<div class="small muted" style="margin:10px 0 2px">Os favoritos mais claros do Vi. Compara a <b>odd justa</b> com a da Betano: se a Betano pagar mais, há valor.</div>` + fav.map(({ m, P }) => `<div class="why" onclick="GT='ana';openMatch('${m.id}')"><span><b style="color:#fff">${esc(pName(m, P.fav))}</b><div class="small muted">vs ${esc(pName(m, P.fav === 'a' ? 'b' : 'a'))} · ${hhmm(m.d)} · ${esc(m.ev)}</div></span><b>${pct(P.conf)}<div class="small" style="color:var(--or2)">justa ${odd2(1 / P.conf)}</div></b></div>`).join('') : `<div class="small muted" style="margin-top:10px">Sem favoritos claros (70%+).</div>`;
@@ -187,13 +187,15 @@ function ssSum() {
 }
 function placeSlip() {
   const L = ssLegs(), stake = num(($('#ssStake') || {}).value);
-  if (!L.length) return toast('Escolhe as seleções'); if (L.some(x => !(x.odd > 1))) return toast('Falta uma odd');
+  if (!L.length) return toast('Escolhe as seleções'); if (L.some(x => !(SS.odd[legKey(x.c)] > 1))) return toast('Mete a odd da Betano em todas as seleções (as cinzentas são só estimativa)');
+  if (L.some(x => !canBet(x.c.m))) return toast('Um dos jogos já começou');
   if (!(stake >= CFG.min)) return toast('A aposta mínima é ' + eur(CFG.min)); if (stake > accStats('tu').bal) return toast('Sem saldo');
   const duel = 'd' + Date.now().toString(36);
   newMulti('tu', L.map(x => safeLeg(x.c, x.odd)), stake, { duel, src: 'seguro', p: r2(L.reduce((a, x) => a * x.c.p, 1)) });
-  const mine = SS.C.filter(c => SS.auto.has(legKey(c))), same = mine.length === L.length && L.every(x => SS.auto.has(legKey(x.c)));
+  let mine = SS.C.filter(c => SS.auto.has(legKey(c))), same = mine.length === L.length && L.every(x => SS.auto.has(legKey(x.c)));
   const ts = Math.min(stake, accStats('to').bal); let msg, mood = 'win';
-  if (mine.length && ts >= CFG.min) { newMulti('to', mine.map(c => safeLeg(c, SS.odd[legKey(c)] > 1 ? SS.odd[legKey(c)] : c.odd)), ts, { duel, src: 'seguro', p: r2(mine.reduce((a, c) => a * c.p, 1)) }); msg = same ? 'É o meu boletim. Vou contigo!' : `Eu fico com o meu: <b>${mine.map(c => esc(c.lb)).join(' + ')}</b>.`; }
+  const mineReal = mine.every(c => SS.odd[legKey(c)] > 1); if (!mineReal) { mine = L.map(x => x.c); same = true; }   // sem odds reais nas dele, vai no teu (que tem)
+  if (mine.length && ts >= CFG.min) { newMulti('to', mine.map(c => safeLeg(c, SS.odd[legKey(c)])), ts, { duel, src: 'seguro', p: r2(mine.reduce((a, c) => a * c.p, 1)) }); msg = same ? 'É o meu boletim. Vou contigo!' : `Eu fico com o meu: <b>${mine.map(c => esc(c.lb)).join(' + ')}</b>.`; }
   else { BETS.push({ id: 'vp' + Date.now().toString(36), acc: 'to', g: L[0].c.m.id, gl: '', gd: L[0].c.m.d, mk: 'pass', stake: 0, odd: 0, t: Date.now(), st: 'pass', ret: 0, lb: 'Passou', duel }); msg = 'Sem saldo… passo.'; mood = 'sad'; }
   saveBets();
   openSheet('Duelo marcado', `<div class="opinion"><div class="face">${viFace(mood)}</div><div>${msg}</div></div><div class="row" style="margin-top:14px"><button class="btn full" onclick="closeSheet();render()">Fechar</button><button class="btn or full" onclick="closeSheet();CT='duelo';go('contas')">Ver duelo</button></div>`, true);
@@ -242,10 +244,20 @@ function tabAna(m, P) {
     <div class="why"><span>Elo em ${SURF_NAME[P.sf].toLowerCase()}</span><b>${Math.round(P.A.es[P.sf])} · ${Math.round(P.B.es[P.sf])}</b></div>
     <div class="why"><span>Diferença usada (70% geral + 30% superfície)</span><b>${d >= 0 ? '+' : '−'}${Math.abs(Math.round(d))} para ${esc(shortName(d >= 0 ? m.a.n : m.b.n))}</b></div>
     <div class="why"><span>Formato</span><b>melhor de ${m.bo}</b></div>
-    ${P.pNV != null ? `<div class="why"><span>Odd da casa sem margem (peso ${pct(P.W)})</span><b>${pct(P.pNV)} · ${pct(1 - P.pNV)}</b></div><div class="why"><span>Só o Elo</span><b>${pct(P.pElo)}</b></div>` : ''}
+    ${P.pNV != null ? `<div class="why"><span>Odd da casa sem margem (peso ${pct(P.W)})</span><b>${pct(P.pNV)} · ${pct(1 - P.pNV)}</b></div><div class="why"><span>Só o modelo do Vi</span><b>${pct(P.pElo)}</b></div>` : ''}
     ${P.A.nov || P.B.nov ? `<div class="small muted" style="margin-top:6px">Jogador novo para o Vi: o Elo inicial vem do ranking. A previsão fica mais certa com os jogos.</div>` : ''}
+    ${fxBlock(m, P)}
     <div class="small muted" style="margin-top:8px">Superfície errada? <a href="#" onclick="event.preventDefault();cycleSurf('${m.id}')" style="color:var(--or2)">Mudar superfície</a></div></div>`;
   return h;
+}
+function fxBlock(m, P) {
+  const F = P.fx && P.fx.list; if (!F || !F.length) return '';
+  const fmt = (x, v) => x.id === 'sv' ? (v >= 0 ? '+' : '−') + Math.abs(v * 100).toFixed(1).replace('.', ',') + ' pts' : x.id === 'age' ? (v ? v + ' anos' : '—') : (v ? 'sim' : 'não');
+  // efeito em pontos percentuais para o jogador A (a partir da probabilidade sem esse fator)
+  const pp = x => { const z = Math.log(P.pElo / (1 - P.pElo)); const q0 = 1 / (1 + Math.exp(-(z - x.v))); return (P.pElo - q0) * 100; };
+  const rows = F.map(x => { const e = pp(x), who = e >= 0 ? m.a.n : m.b.n; return `<div class="why"><span>${x.nm}<br><small class="muted">${esc(shortName(m.a.n))} ${fmt(x, x.a)} · ${esc(shortName(m.b.n))} ${fmt(x, x.b)}</small></span><b>${Math.abs(e) < 0.5 ? 'neutro' : '+' + Math.abs(e).toFixed(1).replace('.', ',') + ' pp ' + esc(shortName(who))}</b></div>`; }).join('');
+  return `<div class="h2" style="margin-top:12px">${ic('chart')} Outros fatores (testados às cegas)</div>${rows}
+    <div class="small muted" style="margin-top:6px">Também testados e postos de parte por não acertarem melhor: confronto direto (H2H), forma recente, superfície além do Elo, canhoto e altura.</div>`;
 }
 function cycleSurf(id) { const m = mOf(id); m.sf = { h: 'c', c: 'g', g: 'h' }[m.sf] || 'h'; m.sfMan = true; if (DB.m[id]) saveDB(); else LS.set('man', MAN); openMatch(id); render(); }
 function tabJog(m, P) {
@@ -282,8 +294,10 @@ function saveOdds(id) {
 
 /* ---------- APOSTAR ---------- */
 let BF = null;
+function canBet(m) { return m && m.s === 'pre' && (m.man || new Date(m.d).getTime() > Date.now()); }
 function openBet(id, mk, sel, line) {
-  const m = mOf(id), P = predict(m);
+  const m = mOf(id); if (!canBet(m)) return toast('Este jogo já começou — já não dá para apostar');
+  const P = predict(m);
   BF = { id, mk: mk || 'ml', sel: sel || P.fav, line: line != null ? line : null, stake: Math.max(CFG.min, 1), odd: '' };
   if (BF.mk === 'ml') { const o = m.o || (MAN[id] && MAN[id].o) || {}; BF.odd = BF.sel === 'a' ? (o.a || '') : (o.b || ''); }
   drawBet();
@@ -315,6 +329,7 @@ function betOpinion() {
 }
 function placeBet() {
   readBF();
+  if (!canBet(mOf(BF.id))) return toast('Este jogo já começou');
   const m = mOf(BF.id), P = predict(m), c = { mk: BF.mk, sel: BF.sel, line: BF.line, odd: BF.odd };
   const q = probs(P, c.mk, c.sel, c.line), ev = evOf(q, c.odd), duel = 'd' + Date.now().toString(36);
   newBet('tu', m, c, BF.stake, { p: r2(q.w), ev: r2(ev), duel });
@@ -448,12 +463,13 @@ function openHow() {
    <p><b>2. Superfície.</b> Há um Elo para piso duro, terra e relva. O Vi junta 70% do geral com 30% do da superfície (o melhor no teste).</p>
    <p><b>3. Melhor de 5.</b> Nos Grand Slams masculinos o favorito ganha mais vezes: o Vi converte a probabilidade set a set.</p>
    <p><b>4. Jogos.</b> A partir do serviço e da resposta de cada um (pontos ganhos face à média), calcula jogo a jogo, set a set, e mistura «dia bom / normal / dia mau» — sem isso o modelo dava jogos a mais. Dá handicap, total de jogos e sets.</p>
-   <p><b>5. Teste às cegas.</b> Jun 2025 → jun 2026 (jogos que o Vi não viu): 65% de acerto no ATP e 67% na WTA, melhor que o ranking. Quando diz 70%, acontece ~72%.</p>
-   <p><b>6. Odds.</b> A ESPN quase não dá odds de ténis: mete as da Betano na ficha do jogo. Se a Betano paga acima da odd justa do Vi, há valor.</p></div>`);
+   <p><b>5. Outros fatores.</b> Testados um a um às cegas. Entraram os que acertam melhor: serviço + resposta do último ano, idade (acima dos 31 o Elo exagera) e paragem longa (mais de 60 dias sem jogar). Ficaram de fora porque não ajudavam: confronto direto (H2H), forma recente (o serviço+resposta já a apanha), superfície extra, canhoto e altura. O caso «besta negra» também foi testado: o Elo já explica esses duelos.</p>
+   <p><b>6. Teste às cegas.</b> Jun 2025 → jun 2026 (jogos que o Vi não viu): 66% de acerto no ATP e 66% na WTA, melhor que o ranking (63-64%). Quando diz 70%, acontece ~70%.</p>
+   <p><b>7. Odds.</b> A ESPN quase não dá odds de ténis: mete as da Betano na ficha do jogo. Se a Betano paga acima da odd justa do Vi, há valor.</p></div>`);
 }
 function openHelp() {
   const q = (t, x) => `<div class="gl"><b>${t}</b><div class="small" style="margin-top:4px;line-height:1.5">${x}</div></div>`;
-  openSheet('O que quer dizer', q('Vencedor', 'Quem ganha o encontro. Se um jogador desiste, a Betano tem regras próprias; o Vi anula as apostas de jogos/handicap e mantém a de vencedor só se já houve pelo menos um set.') + q('Handicap de jogos', '«Shelton −3,5 jogos» ganha se o Shelton fizer pelo menos mais 4 jogos do que o adversário no encontro todo. «Jodar +3,5» ganha se o Jodar perder por 3 jogos ou menos (ou ganhar).') + q('Total de jogos', 'Soma dos jogos de todos os sets. 6-4 6-3 = 19 jogos. «Mais de 21,5» precisa de 22 ou mais.') + q('Odd justa e valor', 'Odd justa = 1 ÷ probabilidade do Vi. Se a Betano pagar mais do que a odd justa, há valor (a longo prazo ganha-se).') + q('Elo', 'Força de cada jogador pelos resultados. 2000+ = top mundial; diferença de 200 pontos ≈ 76% para o mais forte.'));
+  openSheet('O que quer dizer', q('Vencedor', 'Quem ganha o encontro. Se um jogador desiste, a Betano tem regras próprias; o Vi anula as apostas de jogos/handicap e mantém a de vencedor só se já houve pelo menos um set acabado.') + q('Handicap de jogos', '«Shelton −3,5 jogos» ganha se o Shelton fizer pelo menos mais 4 jogos do que o adversário no encontro todo. «Jodar +3,5» ganha se o Jodar perder por 3 jogos ou menos (ou ganhar).') + q('Total de jogos', 'Soma dos jogos de todos os sets. 6-4 6-3 = 19 jogos. «Mais de 21,5» precisa de 22 ou mais.') + q('Odd justa e valor', 'Odd justa = 1 ÷ probabilidade do Vi. Se a Betano pagar mais do que a odd justa, há valor (a longo prazo ganha-se).') + q('Elo', 'Força de cada jogador pelos resultados. 2000+ = top mundial; diferença de 200 pontos ≈ 76% para o mais forte.'));
 }
 function openCfg() {
   const inp = (id, l, v) => `<label class="f">${l}</label><input class="in" id="${id}" inputmode="decimal" value="${ln(v)}">`;
@@ -489,5 +505,5 @@ $('#topFace').innerHTML = viFace('ok'); $('#btnRefresh').innerHTML = ic('refresh
 document.querySelectorAll('[data-ic]').forEach(el => { el.outerHTML = ic(el.dataset.ic); });
 window.addEventListener('hashchange', () => { const v = location.hash.slice(1); if (VIEWS.includes(v) && v !== VIEW) { VIEW = v; render(); } });
 render();
-fetch('ratings.json').then(r => r.json()).then(j => { SEED = j; settleAll(); render(); }).catch(() => { $('#view').innerHTML = '<div class="gl">Não consegui carregar os dados do Vi (ratings.json). Abre com internet uma vez.</div>'; });
+fetch('ratings.json').then(r => r.json()).then(j => { SEED = j; migrate(); settleAll(); render(); }).catch(() => { $('#view').innerHTML = '<div class="gl">Não consegui carregar os dados do Vi (ratings.json). Abre com internet uma vez.</div>'; });
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

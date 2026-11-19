@@ -16,5 +16,26 @@ Dados: arquivo público de Jeff Sackmann / Tennis Abstract (CC BY-NC-SA 4.0), vi
 - Com mistura «dia bom / normal / dia mau» (δ = 0,05–0,065) acerta: ATP 23,7 vs 23,4; WTA 22,4 vs 22,5;
   «mais de 21,5» 55% vs 52,5% (ATP) e 47% vs 48% (WTA); handicaps do favorito a ±3 pontos.
 
+## Fatores além do Elo (teste cego, novembro 2026) — `factors*.py`
+Cada fator calculado só com o que se sabia ANTES do jogo. Afinado 2015-2024, confirmado jun 2025 → jun 2026 (jogos de tour).
+
+| Fator | Resultado | Na app? |
+|---|---|---|
+| Serviço + resposta (pontos ganhos, último ano) | melhora sempre (ATP t=6,4, WTA t=3,5) | **sim** |
+| Idade acima dos 31 | o Elo sobrestima os veteranos (t=−7,6 / −4,1) | **sim** |
+| Paragem > 60 dias | quem volta rende menos do que o Elo diz | **sim** |
+| Cansaço (minutos do jogo anterior no torneio) | só ajuda no Challenger ATP, pouco | não |
+| Forma recente (resultado − esperado) | ajuda sozinha, mas desaparece com serviço+resposta | não (já incluída) |
+| Superfície «extra» | nada: os 30% de superfície no Elo já chegam | não |
+| Confronto direto (H2H) | não melhora fora da amostra | não |
+| Canhoto vs destro, altura em piso rápido | nada | não |
+
+«Besta negra» (≥3 jogos, o mais fraco no Elo ganhou a maioria): o Elo dava ao favorito 60,8% (ATP) e ele ganhou 59,1%;
+WTA 61,2% → 61,1%. O efeito é quase nulo: o Elo já explica estes duelos.
+
+Resultado final (jogos de tour, fora da amostra):
+- **ATP:** log-loss 0,618 → 0,6145; acerto 65,2% → 66,2%.
+- **WTA:** 0,607 → 0,6064; acerto igual (66,3%). Calibração boa em todas as faixas.
+
 ## Por fazer
 - Teste contra as odds da casa (as odds históricas de ténis grátis são raras; a OddsPapi tem histórico no plano grátis).
